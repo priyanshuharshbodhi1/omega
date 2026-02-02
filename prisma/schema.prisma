@@ -1,0 +1,177 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String          @id @default(cuid())
+  name          String?
+  username      String?         @unique
+  password      String?
+  email         String?         @unique
+  emailVerified DateTime?
+  image         String?
+  currentTeamId String?
+  accounts      Account[]
+  sessions      Session[]
+  teams         TeamMember[]
+
+  // Optional for WebAuthn support
+  Authenticator Authenticator[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String  @unique
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String? @db.Text
+  access_token             String? @db.Text
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String? @db.Text
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Optional for WebAuthn support
+model Authenticator {
+  credentialID         String  @unique
+  userId               String
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  style       Json?
+  members     TeamMember[]
+  feedbacks   Feedback[]
+  feedbackTags FeedbackTag[]
+  embeddedDocuments EmbeddedDocument[]
+  customers   Customer[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TeamMember {
+  teamId      String
+  userId      String
+  role        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([userId, teamId])
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  teamId      String
+  name        String?
+  email       String?
+  phone       String?
+  address     String?
+  feedbacks   Feedback[]
+  isVerified  Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model Feedback {
+  id          String   @id @default(cuid())
+  teamId      String
+  customerId  String?
+  type        String?
+  rate        Int?
+  description String? @db.Text
+  aiResponse  String? @db.Text
+  sentiment   String?
+  isResolved  Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+}
+
+model FeedbackTag {
+  id          String   @id @default(cuid())
+  teamId      String
+  name        String
+  total       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model EmbeddedDocument {
+  id          String   @id @default(cuid())
+  teamId      String?
+  content     String @db.Text
+  metadata    Json
+  embedding   Unsupported("vector(1536)")?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team Team? @relation(fields: [teamId], references: [id])
+}
