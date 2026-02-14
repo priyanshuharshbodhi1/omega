@@ -1,9 +1,6 @@
-import { openai } from "@ai-sdk/openai";
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { PrismaClient } from "@prisma/client";
-import { PrismaTiDBCloud } from "@tidbcloud/prisma-adapter";
-import { connect } from "@tidbcloud/serverless";
 import { streamText, convertToCoreMessages } from "ai";
+import { esClient } from "@/lib/elasticsearch";
+import { getAISDKModel, getEmbeddings } from "@/lib/llm";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -14,37 +11,82 @@ const formatMessage = (message: any) => {
 
 export async function POST(req: Request) {
   const { messages, team, session } = await req.json();
-  const connection = connect({ url: process.env.DATABASE_URL });
-  const adapter = new PrismaTiDBCloud(connection);
-  const prisma = new PrismaClient({ adapter });
+  const teamId = team?.id;
 
   const formattedPreviousMessages = messages.slice(0, -1).map(formatMessage);
   const currentMessageContent = messages[messages.length - 1].content;
 
-  const texts = [currentMessageContent];
-  const embeddings = new OpenAIEmbeddings({
-    model: "text-embedding-3-small",
-    dimensions: 1536,
-  });
-  const vectorData = await embeddings.embedDocuments(texts);
+  try {
+    // Attempt to generate embeddings for kNN search
+    const vectorData = await getEmbeddings(currentMessageContent);
 
-  const relateds = await prisma.$queryRawUnsafe<any[]>(
-    `SELECT id, content, vec_cosine_distance(embedding, '[${vectorData}]') AS distance FROM EmbeddedDocument ORDER BY distance LIMIT 40`
-  );
-  const context = relateds.map((r) => r.content).join("\n- ");
+    let relateds: any[] = [];
 
-  const result = await streamText({
-    model: openai("gpt-4o-mini"),
-    messages: convertToCoreMessages(messages),
-    system: `You are a smart assistant who helps users analyze feedback for their company. Here is the user profile: \n- Name: ${session?.user?.name}\n\n
-    Here is the feedback list the company has received:
-    ${context}
+    if (vectorData && vectorData[0]) {
+      // Use Elasticsearch kNN search for feedback context
+      const result_es = await esClient.search({
+        index: "feedback",
+        knn: {
+          field: "embedding",
+          query_vector: vectorData[0],
+          k: 40,
+          num_candidates: 200,
+          filter: {
+            term: { teamId: teamId },
+          },
+        },
+        _source: ["description"],
+      });
+      relateds = result_es.hits.hits.map((hit: any) => ({
+        content: hit._source.description,
+      }));
+    } else {
+      // Fallback: Use standard text search if no embeddings
+      const result_es = await esClient.search({
+        index: "feedback",
+        query: {
+          bool: {
+            must: [
+              { match: { description: currentMessageContent } },
+              { term: { teamId: teamId } },
+            ],
+          },
+        },
+        size: 20,
+        _source: ["description"],
+      });
+      relateds = result_es.hits.hits.map((hit: any) => ({
+        content: hit._source.description,
+      }));
+    }
 
-    Rules:
-    - Format the results in markdown
-    - If you don't know the answer, just say you don't know. Don't try to make up an answer
-    - Answer concisely & in detail`,
-  });
+    const context = relateds.map((r) => r.content).join("\n- ");
 
-  return result.toDataStreamResponse();
+    const model = getAISDKModel();
+
+    const result = await streamText({
+      model: model as any,
+      messages: convertToCoreMessages(messages),
+      system: `You are a smart assistant who helps users analyze feedback for their company. Here is the user profile: \n- Name: ${session?.user?.name}\n\n
+      Here is the feedback list the company has received:
+      ${context || "No specific feedback found for this query."}
+
+      Rules:
+      - Format the results in markdown
+      - If you don't know the answer, just say you don't know. Don't try to make up an answer
+      - Answer concisely & in detail`,
+    });
+
+    return result.toDataStreamResponse();
+  } catch (error) {
+    console.error("Chat error:", error);
+    // Fallback if ES search fails
+    const model = getAISDKModel();
+    const result = await streamText({
+      model: model as any,
+      messages: convertToCoreMessages(messages),
+      system: `You are a smart assistant. (Note: Feedback search currently unavailable) \n- Name: ${session?.user?.name}`,
+    });
+    return result.toDataStreamResponse();
+  }
 }
