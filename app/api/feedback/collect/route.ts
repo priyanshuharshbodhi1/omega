@@ -1,10 +1,7 @@
-import { Prisma, PrismaClient } from "@prisma/client";
-import { PrismaTiDBCloud } from "@tidbcloud/prisma-adapter";
-import { connect } from "@tidbcloud/serverless";
 import { NextResponse } from "next/server";
-import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { stopWords } from "@/lib/stop-words";
+import { createFeedback } from "@/lib/elasticsearch";
+import { getChatModel, getEmbeddings } from "@/lib/llm";
 
 const TEXT_CLASIFY = `Classify the sentiment of the message
 Input: I had a terrible experience with this store. The clothes were of poor quality and overpriced.
@@ -23,32 +20,45 @@ Output:
 const AI_RESPONSE = `User given feedback for us, please provide a summary or suggestion how to address common issues raised to act for us as company. Format the results in markdown. Here is the feedback: {input}`;
 
 export async function POST(req: Request) {
-  const connection = connect({ url: process.env.DATABASE_URL });
-  const adapter = new PrismaTiDBCloud(connection);
-  const prisma = new PrismaClient({ adapter });
   const body = await req.json();
 
   try {
-    // Classify Text
+    // Classify Text using Fallback Model
     const promptClassify = ChatPromptTemplate.fromTemplate(TEXT_CLASIFY);
     const formattedPromptClassify = await promptClassify.format({
       input: body.text,
     });
-    const modelClassify = new ChatOpenAI({
-      temperature: 0.2,
-    });
+    const modelClassify = getChatModel(0.2);
     const textClassify = await modelClassify.invoke(formattedPromptClassify);
 
-    // aiResponse feedback
+    // aiResponse feedback using Fallback Model
     const promptResponse = ChatPromptTemplate.fromTemplate(AI_RESPONSE);
     const formattedPromptResponse = await promptResponse.format({
       input: body.text,
     });
-    const modelResponse = new ChatOpenAI({
-      temperature: 0.7,
-    });
+    const modelResponse = getChatModel(0.7);
     const textResponse = await modelResponse.invoke(formattedPromptResponse);
 
+    // Handle Optional Embeddings
+    const vectorData = await getEmbeddings(body.text);
+
+    // Save Feedback to Elasticsearch
+    const feedbackData: any = {
+      teamId: body.teamId,
+      rate: body.rate,
+      description: body.text,
+      aiResponse: (textResponse.content as String).trim(),
+      sentiment: (textClassify.content as String).trim(),
+      isResolved: false,
+    };
+
+    if (vectorData && vectorData[0]) {
+      feedbackData.embedding = vectorData[0];
+    }
+
+    const feedbackStored = await createFeedback(feedbackData);
+
+    /* OLD PRISMA CREATE
     const feedbackStored = await prisma.feedback.create({
       data: {
         teamId: body.teamId,
@@ -58,8 +68,11 @@ export async function POST(req: Request) {
         sentiment: (textClassify.content as String).trim(),
       },
     });
+    */
 
-    // Split Text
+    // Split Text and handle tags (We'll skip manual tags for now or move them to a 'tags' index later)
+    // For now, let's just keep the feedback collection simple as ES can handle keyword search easily
+    /* OLD TAG LOGIC
     const textSplitted = body.text
       .toLowerCase()
       .replace(/[.,?!]/g, "")
@@ -95,16 +108,9 @@ export async function POST(req: Request) {
         }
       }
     });
+    */
 
-    const texts = [`${body.text}`];
-
-    const embeddings = new OpenAIEmbeddings({
-      model: "text-embedding-3-small",
-      dimensions: 1536,
-    });
-
-    const vectorData = await embeddings.embedDocuments(texts);
-
+    /* OLD EMBEDDING CREATION (Relied on SQL raw update)
     const embeddedDocument = await prisma.embeddedDocument.create({
       data: {
         teamId: body.teamId,
@@ -116,9 +122,16 @@ export async function POST(req: Request) {
     await prisma.$executeRawUnsafe(
       `UPDATE EmbeddedDocument SET embedding = '[${vectorData}]' WHERE id = '${embeddedDocument.id}'`
     );
+    */
 
-    return NextResponse.json({ success: true, message: "Success send feedback", data: feedbackStored }, { status: 200 });
+    return NextResponse.json(
+      { success: true, message: "Success send feedback", data: feedbackStored },
+      { status: 200 },
+    );
   } catch (error) {
-    return NextResponse.json({ success: false, message: (error as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: (error as Error).message },
+      { status: 500 },
+    );
   }
 }

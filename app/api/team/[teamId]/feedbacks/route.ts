@@ -1,30 +1,32 @@
 import { auth } from "@/auth";
-import { PrismaClient } from "@prisma/client";
-import { PrismaTiDBCloud } from "@tidbcloud/prisma-adapter";
-import { connect } from "@tidbcloud/serverless";
 import { NextResponse } from "next/server";
+import { esClient, getTeam } from "@/lib/elasticsearch";
 
-export async function GET(req: Request, { params }: { params: { teamId: string } }) {
+export async function GET(
+  req: Request,
+  { params }: { params: { teamId: string } },
+) {
   const teamId = params.teamId;
 
-  const connection = connect({ url: process.env.DATABASE_URL });
-  const adapter = new PrismaTiDBCloud(connection);
-  const prisma = new PrismaClient({ adapter });
   const session = await auth();
   if (!session) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { success: false, message: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
-  const team = await prisma.team.findUnique({
-    where: {
-      id: teamId,
-    },
-  });
+  // Check if team exists (now in Elastic)
+  const team = await getTeam(teamId);
 
   if (!team) {
-    return NextResponse.json({ success: false, message: "Team not found" }, { status: 404 });
+    return NextResponse.json(
+      { success: false, message: "Team not found" },
+      { status: 404 },
+    );
   }
 
+  /* OLD PRISMA QUERY
   const feedbacks = await prisma.feedback.findMany({
     where: {
       teamId: teamId,
@@ -33,6 +35,33 @@ export async function GET(req: Request, { params }: { params: { teamId: string }
       createdAt: "desc",
     },
   });
+  */
 
-  return NextResponse.json({ success: true, message: "Success to get team", data: feedbacks });
+  // New: Search feedbacks in Elasticsearch
+  try {
+    const result = await esClient.search({
+      index: "feedback",
+      query: {
+        term: { teamId: teamId },
+      },
+      sort: [{ createdAt: "desc" }],
+      size: 100, // Limit to 100 for now
+    });
+
+    const feedbacks = result.hits.hits.map((hit) => ({
+      id: hit._id,
+      ...(hit._source as any),
+    }));
+
+    return NextResponse.json({
+      success: true,
+      message: "Success to get team",
+      data: feedbacks,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, message: (error as Error).message },
+      { status: 500 },
+    );
+  }
 }
