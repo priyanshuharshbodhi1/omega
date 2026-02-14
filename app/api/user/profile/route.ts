@@ -1,31 +1,53 @@
 import { auth } from "@/auth";
-import { PrismaClient } from "@prisma/client";
-import { PrismaTiDBCloud } from "@tidbcloud/prisma-adapter";
-import { connect } from "@tidbcloud/serverless";
 import { NextResponse } from "next/server";
+import { getUserById, getTeam } from "@/lib/elasticsearch";
 
 export async function GET(req: Request) {
-  const connection = connect({ url: process.env.DATABASE_URL });
-  const adapter = new PrismaTiDBCloud(connection);
-  const prisma = new PrismaClient({ adapter });
   const session = await auth();
-  if (!session) {
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+  if (!session || !(session.user as any)?.id) {
+    return NextResponse.json(
+      { success: false, message: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
-  const user = await prisma.user.findUnique({
-    where: {
-      email: session.user!.email!,
-    },
-    include: {
-      teams: {
-        include: {
-          team: true,
-        },
-      },
-    },
-  });
+  try {
+    // New: Fetch User profile from Elasticsearch
+    const user = await getUserById((session.user as any).id);
 
-  return NextResponse.json({ success: true, message: "Successfully fetched user profile", data: user }, { status: 200 });
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "User not found" },
+        { status: 404 },
+      );
+    }
+
+    // New: Fetch the user's current team to satisfy the legacy relational structure expected by the frontend
+    let teams: any[] = [];
+    if (user.currentTeamId) {
+      const team = await getTeam(user.currentTeamId);
+      if (team) {
+        teams.push({ team });
+      }
+    }
+
+    const userData = {
+      ...user,
+      teams: teams,
+    };
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Successfully fetched user profile",
+        data: userData,
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, message: (error as Error).message },
+      { status: 500 },
+    );
+  }
 }

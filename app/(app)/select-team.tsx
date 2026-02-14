@@ -35,8 +35,13 @@ export default function SelectTeam({ session }: { session: any }) {
   }, [session, user, setUser]);
 
   useEffect(() => {
-    if (user && activeTeam === null) {
-      setActiveTeam(user.teams.find((o: any) => o.team.id === user.currentTeamId).team);
+    if (user && user.teams && activeTeam === null) {
+      const current = user.teams.find(
+        (o: any) => o.team.id === user.currentTeamId,
+      );
+      if (current) {
+        setActiveTeam(current.team);
+      }
     }
   }, [user, activeTeam, setActiveTeam]);
 
@@ -52,7 +57,10 @@ export default function SelectTeam({ session }: { session: any }) {
             <DropdownMenuLabel>My Teams</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {user?.teams.map((t: any) => (
-              <DropdownMenuItem onClick={() => setActiveTeam(t.team)} key={t.team.id}>
+              <DropdownMenuItem
+                onClick={() => setActiveTeam(t.team)}
+                key={t.team.id}
+              >
                 {t.team.name}
               </DropdownMenuItem>
             ))}
