@@ -1,67 +1,146 @@
-# Omega
+# Zapfeed: AI-Powered Customer Feedback Analysis
 
-[Omega](https://omega.xyz) is a SaaS application designed for business owners to effortlessly collect, analyze, and act on customer feedback using the power of AI. With Omega, you can gain valuable insights into customer sentiments, streamline your feedback processes, and enhance customer satisfaction.
+> **Hackathon Submission for Elastic Agent Builder Hackathon**
 
-## Features
+## 📋 Executive Summary
 
-- **Intuitive Dashboard**: Visualize your feedback data with metrics like total feedback, sentiment analysis, and trends.
-- **AI-Powered Summaries**: Get instant summaries of feedback and actionable insights.
-- **Customizable Widgets**: Easily integrate feedback collection into your website with customizable widgets.
-- **Effortless Integration**: Embed Omega with a single line of code, direct links, or QR codes.
-- **AI Chat**: Interact with an AI chatbot to analyze feedback data and get insights.
+**Hackathon**: [Elasticsearch Agent Builder Hackathon](https://elasticsearch.devpost.com/)  
+**Deadline**: February 27, 2026 at 1:00pm EST
 
-## Technologies Used
+Zapfeed helps businesses effortlessly gather, analyze, and act on customer feedback using the power of **Elasticsearch** and **AI**.
 
-- **Frontend**: Next.js
-- **Backend**: [TiDB Serverless with Vector Search](https://www.pingcap.com/ai), OpenAI
-- **Styling**: Tailwind CSS
-- **Deployment**: Vercel
+---
 
-## Getting Started
+## 🚀 Key Features
 
-### Prerequisites
+- **Smart Feedback Collection**: Embeddable widgets for websites.
+- **AI Analysis**: Automatically categorizes sentiment (Positive, Neutral, Negative) and generates summaries.
+- **Elasticsearch Powered**:
+  - **Vector Search**: Finds semantically related feedback using kNN.
+  - **Full-Text Search**: Keyword matching for precise retrieval.
+  - **Analytics**: Real-time dashboards powered by ES|QL.
+- **Agent Builder Integration** (Planned): Custom AI agents to answer business questions about feedback trends.
 
-Make sure you have the following installed:
+---
 
-- Node.js (version 14.x or later)
-- A [TiDB Serverless with Vector Search](https://www.pingcap.com/ai) account
-- An OpenAI API key
+## 🛠️ Technical Stack
 
-### Installation
+- **Frontend**: Next.js 14 (App Router), Tailwind CSS, Shadcn UI
+- **Database**: Elasticsearch (Elastic Cloud) - Replaced TiDB/Prisma
+- **AI**: OpenAI (Embeddings & Chat) / Groq (LPU Inference)
+- **Auth**: NextAuth.js with Custom Elasticsearch Adapter
 
-1. Clone the repository:
+---
 
-   ```bash
-   git clone https://github.com/priyanshuharshbodhi1/omega.git
-   cd omega
-   ```
+## 📦 Project Structure
 
-2. Install dependencies:
+```
+├── app/               # Next.js App Router
+│   ├── api/           # API Routes (Edge & Node.js)
+│   ├── (app)/         # Dashboard & App UI
+│   └── (auth)/        # Login/Register Pages
+├── components/        # Reusable UI Components
+├── lib/               # Utilities
+│   ├── elasticsearch.ts # ES Client
+│   └── llm.ts         # AI Model Configuration
+├── scripts/           # Maintenance Scripts (Init Indices, Verify ES)
+└── public/            # Static Assets
+```
 
-   ```bash
-   npm install
-   ```
+---
 
-3. Create a .env file in the root directory and add your environment variables:
+## 🏁 Hackathon Strategy & Implementation Plan
 
-   ```bash
-   NEXT_PUBLIC_BASE_URL="http://localhost:3000"
-   AUTH_SECRET=example
-   DATABASE_URL=
-   OPENAI_API_KEY=
-   ```
+### Phase 1: Setup & Foundation (Completed)
 
-4. Run prisma migrate dev to create the database schema:
+- [x] Set up Elastic Cloud account and deployment
+- [x] Create Elasticsearch indices (feedback, customers, embeddings)
+- [x] Test: Verify indices are accessible via Kibana
 
-   ```bash
-   npx prisma generate
-   npx prisma migrate dev
-   ```
+### Phase 2: Full Elasticsearch Migration (ES-Only) (Completed)
 
-5. Run the development server:
+- [x] Replace Prisma/TiDB with Elasticsearch client for business data
+- [x] Migrate User storage and Authentication to Elasticsearch
+- [x] Delete `schema.prisma` and remove Prisma/TiDB dependencies
+- [x] Implement custom Auth.js credentials provider using Elasticsearch
+- [x] Fix: Restore user-team relations in ES profile to prevent frontend crashes
+- [x] Test: Production build succeeds and registration works via ES
 
-   ```bash
-   npm run dev
-   ```
+### Phase 3: Agent Builder Integration (In Progress)
 
-6. Open your browser and navigate to http://localhost:3000.
+- [ ] Enable Agent Builder in Elastic Cloud
+- [ ] Create custom ES|QL tools for feedback analysis
+- [ ] Create zapfeed_analyst custom agent
+- [ ] Test: Agent responds correctly in Kibana chat
+
+### Phase 4: Application Integration
+
+- [ ] Update API routes to use Agent Builder
+- [ ] Replace chat endpoint with Agent Builder API
+- [ ] Update dashboard queries to use ES|QL
+- [ ] Test: Full application works end-to-end
+
+### Phase 5: Polish & Submit
+
+- [ ] Add multi-agent features (optional wow factor)
+- [ ] Create 3-minute demo video
+- [ ] Write ~400 word project description
+- [ ] Share on social media (@elastic_devs)
+- [ ] Submit to hackathon
+
+---
+
+## 💡 How to Run Locally
+
+1.  **Clone the repo:**
+
+    ```bash
+    git clone https://github.com/yourusername/zapfeed.git
+    cd zapfeed
+    ```
+
+2.  **Install dependencies:**
+
+    ```bash
+    npm install
+    ```
+
+3.  **Set up environment variables:**
+    Create a `.env` file with:
+
+    ```env
+    ELASTIC_CLOUD_ID=...
+    ELASTIC_API_KEY=...
+    ELASTIC_KIBANA_URL=...
+    OPENAI_API_KEY=...
+    GROQ_API_KEY=...
+    NEXTAUTH_SECRET=...
+    NEXT_PUBLIC_BASE_URL=http://localhost:3000
+    ```
+
+4.  **Run the development server:**
+
+    ```bash
+    npm run dev
+    ```
+
+5.  **Open [http://localhost:3000](http://localhost:3000)**
+
+---
+
+## 🏆 Bottom Line: Can Zapfeed Win?
+
+**Yes, with significant work.** The project has a solid foundation:
+
+- ✅ Real-world use case (customer feedback)
+- ✅ AI integration (OpenAI/Groq)
+- ✅ Vector search capability
+- ✅ Clean UI with Next.js
+
+**Next Steps to Win:**
+
+1.  **Migrate to Elasticsearch** - Done!
+2.  **Implement Agent Builder** - The hackathon is about Agent Builder.
+3.  **Build multi-agent architecture** - All winners had this.
+4.  **Create a polished demo** - 30% of your score.
+5.  **Share on social** - Free 10% bonus.
