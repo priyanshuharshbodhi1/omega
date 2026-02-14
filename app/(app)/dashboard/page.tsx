@@ -1,8 +1,22 @@
 "use client";
 
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useTeam } from "@/lib/store";
-import { Frown, Meh, MessageSquare, MessageSquareDashed, MessageSquarePlus, Smile, Star } from "lucide-react";
+import {
+  Frown,
+  Meh,
+  MessageSquare,
+  MessageSquareDashed,
+  MessageSquarePlus,
+  Smile,
+  Star,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import TopKeywords from "./top-keywords";
 import { ChartContainer } from "@/components/ui/chart";
@@ -52,7 +66,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Feedback Added</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Feedback Added
+            </CardTitle>
             <MessageSquarePlus className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -72,7 +88,9 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Feedback Resolved</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Feedback Resolved
+            </CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -82,17 +100,23 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rating Average</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Rating Average
+            </CardTitle>
             <Star className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.ratingAverage}</div>
+            <div className="text-2xl font-bold">
+              {stats?.ratingAverage
+                ? Number(stats.ratingAverage).toFixed(1)
+                : "0.0"}
+            </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div>
+        <div>
           <Card className="w-full">
             <CardHeader className="py-3">
               <CardTitle className="text-sm font-bold">Sentiment</CardTitle>
@@ -125,20 +149,46 @@ export default function Dashboard() {
                   data={[
                     {
                       activity: "positive",
-                      value: parseInt(stats?.sentiment?.find((o: any) => o.name === "positive")?.percentage),
-                      label: parseFloat(stats?.sentiment?.find((o: any) => o.name === "positive")?.percentage).toFixed(2) + "%",
+                      value: parseInt(
+                        stats?.sentiment?.find(
+                          (o: any) => o.name === "positive",
+                        )?.percentage,
+                      ),
+                      label:
+                        parseFloat(
+                          stats?.sentiment?.find(
+                            (o: any) => o.name === "positive",
+                          )?.percentage,
+                        ).toFixed(2) + "%",
                       fill: "#00dc94",
                     },
                     {
                       activity: "neutral",
-                      value: parseInt(stats?.sentiment?.find((o: any) => o.name === "neutral")?.percentage),
-                      label: parseFloat(stats?.sentiment?.find((o: any) => o.name === "neutral")?.percentage).toFixed(2) + "%",
+                      value: parseInt(
+                        stats?.sentiment?.find((o: any) => o.name === "neutral")
+                          ?.percentage,
+                      ),
+                      label:
+                        parseFloat(
+                          stats?.sentiment?.find(
+                            (o: any) => o.name === "neutral",
+                          )?.percentage,
+                        ).toFixed(2) + "%",
                       fill: "#333333",
                     },
                     {
                       activity: "negative",
-                      value: parseInt(stats?.sentiment?.find((o: any) => o.name === "negative")?.percentage),
-                      label: parseFloat(stats?.sentiment?.find((o: any) => o.name === "negative")?.percentage).toFixed(2) + "%",
+                      value: parseInt(
+                        stats?.sentiment?.find(
+                          (o: any) => o.name === "negative",
+                        )?.percentage,
+                      ),
+                      label:
+                        parseFloat(
+                          stats?.sentiment?.find(
+                            (o: any) => o.name === "negative",
+                          )?.percentage,
+                        ).toFixed(2) + "%",
                       fill: "#f70030",
                     },
                   ]}
@@ -172,21 +222,30 @@ export default function Dashboard() {
                 <div className="grid flex-1 auto-rows-min gap-0.5">
                   <div className="text-xs text-muted-foreground">Positive</div>
                   <div className="flex items-baseline gap-1 text-2xl font-bold tabular-nums leading-none">
-                    {stats?.sentiment?.find((o: any) => o.name === "positive")?.count}
+                    {
+                      stats?.sentiment?.find((o: any) => o.name === "positive")
+                        ?.count
+                    }
                   </div>
                 </div>
                 <Separator orientation="vertical" className="mx-2 h-10 w-px" />
                 <div className="grid flex-1 auto-rows-min gap-0.5">
                   <div className="text-xs text-muted-foreground">Neutral</div>
                   <div className="flex items-baseline gap-1 text-2xl font-bold tabular-nums leading-none">
-                    {stats?.sentiment?.find((o: any) => o.name === "neutral")?.count}
+                    {
+                      stats?.sentiment?.find((o: any) => o.name === "neutral")
+                        ?.count
+                    }
                   </div>
                 </div>
                 <Separator orientation="vertical" className="mx-2 h-10 w-px" />
                 <div className="grid flex-1 auto-rows-min gap-0.5">
                   <div className="text-xs text-muted-foreground">Negative</div>
                   <div className="flex items-baseline gap-1 text-2xl font-bold tabular-nums leading-none">
-                    {stats?.sentiment?.find((o: any) => o.name === "negative")?.count}
+                    {
+                      stats?.sentiment?.find((o: any) => o.name === "negative")
+                        ?.count
+                    }
                   </div>
                 </div>
               </div>
