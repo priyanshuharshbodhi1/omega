@@ -1,52 +1,41 @@
 import NextAuth from "next-auth";
-import { connect } from "@tidbcloud/serverless";
-import { PrismaTiDBCloud } from "@tidbcloud/prisma-adapter";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { PrismaClient } from "@prisma/client";
 import credentials from "next-auth/providers/credentials";
-
-const connection = connect({ url: process.env.DATABASE_URL });
-const adapter = new PrismaTiDBCloud(connection);
-const prisma = new PrismaClient({ adapter });
+import { authConfig } from "./auth.config";
+import { getUserByEmail } from "./lib/elasticsearch";
+import bcrypt from "bcryptjs";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  ...authConfig,
   providers: [
     credentials({
       credentials: {
-        email: { label: "Email", type: "email", placeholder: "example@email.com" },
-        password: { label: "Password", type: "password", placeholder: "******" },
+        email: {
+          label: "Email",
+          type: "email",
+          placeholder: "example@email.com",
+        },
+        password: {
+          label: "Password",
+          type: "password",
+          placeholder: "******",
+        },
       },
       authorize: async (credentials) => {
-        let user = null;
+        if (!credentials?.email || !credentials?.password) return null;
 
-        if (!credentials || typeof credentials.password !== "string" || typeof credentials.email !== "string") {
-          return Promise.reject(new Error("Invalid credentials"));
-        }
+        const user = await getUserByEmail(credentials.email as string);
+        if (!user || !user.password) return null;
 
-        // logic to verify if the user exists
-        user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
+        const isPasswordCorrect = await bcrypt.compare(
+          credentials.password as string,
+          user.password,
+        );
 
-        if (!user) {
-          return Promise.reject(new Error("User not found."));
-        }
+        if (!isPasswordCorrect) return null;
 
-        return user;
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
       },
     }),
   ],
-  secret: process.env.AUTH_SECRET,
-  session: { strategy: "jwt", maxAge: 60 * 60 * 24 },
-  callbacks: {
-    session: ({ session }) => {
-      return session;
-    },
-    jwt: ({ token, user }) => {
-      return token;
-    }
-  },
 });
