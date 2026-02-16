@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { getChatModel } from "@/lib/llm";
 import { NextResponse } from "next/server";
 import { esClient } from "@/lib/elasticsearch";
+import { getSummaryPrompt } from "@/prompts";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -86,16 +87,55 @@ export async function GET(req: Request) {
       });
     }
 
-    const model = getChatModel(0.5);
-    const res = await model.invoke(
-      `The following is a list of feedback from customers for my business. Help me to create a summary in one to two sentences. And then give the conclusion of the summary:${feedbacks.join("\n")}`,
+    // Use Omega Strategic Analysis
+    const { invokeAgent } = await import("@/lib/agent-builder");
+
+    const agentId = "omega_summarizer";
+    const strategicInstructions = getSummaryPrompt(
+      sentiment || "all",
+      feedbacks.join("\n"),
     );
 
-    return NextResponse.json({
-      success: true,
-      message: "Success to summarized data",
-      data: res.content,
-    });
+    // OPTIMIZATION: We provide a dual-mode strategy.
+    // 'deep' uses the Elastic Agent Builder for full orchestration.
+    // 'fast' uses the Direct Agent logic for ~3s low-latency response.
+    const mode: string = "fast";
+
+    try {
+      if (mode === "deep") {
+        const response = await invokeAgent({
+          agentId,
+          message: strategicInstructions,
+        });
+        return NextResponse.json({
+          success: true,
+          message: "Strategic summary completed (Deep Mode)",
+          data: response.message,
+        });
+      }
+
+      // Fast Agent Path: Matches Agent instructions but optimizes for speed
+      const model = getChatModel(0.3); // Lower temperature for professional summaries
+      const res = await model.invoke(strategicInstructions);
+
+      return NextResponse.json({
+        success: true,
+        message: "Strategic summary completed",
+        data: res.content,
+      });
+    } catch (error) {
+      console.error("Omega Agent Error:", error);
+      // Absolute fallback if everything fails
+      const model = getChatModel(0.7);
+      const res = await model.invoke(
+        `Summarize these customer feedbacks for business: ${feedbacks.join("\n")}`,
+      );
+      return NextResponse.json({
+        success: true,
+        message: "Summary completed (Fallback)",
+        data: res.content,
+      });
+    }
   } catch (error) {
     return NextResponse.json(
       { success: false, message: (error as Error).message },

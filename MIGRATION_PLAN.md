@@ -1,4 +1,4 @@
-# Zapfeed → Elasticsearch Agent Builder Migration Plan
+# Omega → Elasticsearch Agent Builder Migration Plan
 
 ## Goal
 

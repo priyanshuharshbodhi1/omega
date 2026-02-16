@@ -1,20 +1,29 @@
 "use client";
 
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import Rating from "@/components/ui/rating";
 import { SmilePlus } from "lucide-react";
 import { marked } from "marked";
 import moment from "moment";
 import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 export default function Page({ params }: { params: { id: string } }) {
   const id = params.id;
   const [feedback, setFeedback] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchFeedback = async () => {
+      setIsLoading(true);
       fetch(`/api/feedback/${id}`)
         .then((res) => res.json())
         .then((data) => {
@@ -26,6 +35,9 @@ export default function Page({ params }: { params: { id: string } }) {
         })
         .catch((err) => {
           console.log(err);
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
     };
 
@@ -42,14 +54,27 @@ export default function Page({ params }: { params: { id: string } }) {
         <div className="md:col-span-2">
           <Card className="sm:col-span-2 mb-5">
             <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">User Feedback</CardTitle>
+              <CardTitle className="font-semibold text-base">
+                User Feedback
+              </CardTitle>
               <Rating value={feedback?.rate ?? 0} />
             </CardHeader>
-            <CardContent className="prose pt-4">{feedback?.description}</CardContent>
+            <CardContent className="prose pt-4">
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                </div>
+              ) : (
+                feedback?.description
+              )}
+            </CardContent>
           </Card>
           <Card className="sm:col-span-2">
             <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">AI Generated Response</CardTitle>
+              <CardTitle className="font-semibold text-base">
+                AI Generated Response
+              </CardTitle>
               <div
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] capitalize ${
                   feedback.sentiment === "positive" && "bg-[#00dc94] text-white"
@@ -60,7 +85,19 @@ export default function Page({ params }: { params: { id: string } }) {
               </div>
             </CardHeader>
             <CardContent className="pt-4 prose prose-p:text-sm prose-li:text-sm prose-h1:text-xl prose-h2:text-lg prose-h3:text-lg prose-h4:text-lg prose-h5:text-lg prose-h6:text-lg">
-              <div dangerouslySetInnerHTML={{ __html: marked(feedback?.aiResponse ?? "") }}></div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : (
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: marked(feedback?.aiResponse ?? ""),
+                  }}
+                ></div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -72,33 +109,64 @@ export default function Page({ params }: { params: { id: string } }) {
                 <dl className="grid gap-3">
                   <div className="flex items-center justify-between">
                     <dt className="text-muted-foreground">Name</dt>
-                    <dd>Anonymous</dd>
+                    {isLoading ? (
+                      <Skeleton className="h-4 w-20" />
+                    ) : (
+                      <dd>{feedback?.customerName || "Anonymous"}</dd>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-muted-foreground">Email</dt>
-                    <dd>
-                      <a href="mailto:">-</a>
-                    </dd>
+                    {isLoading ? (
+                      <Skeleton className="h-4 w-32" />
+                    ) : (
+                      <dd>
+                        {feedback?.customerEmail ? (
+                          <a href={`mailto:${feedback.customerEmail}`}>
+                            {feedback.customerEmail}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-muted-foreground">Phone</dt>
-                    <dd>
-                      <a href="tel:">-</a>
-                    </dd>
+                    {isLoading ? (
+                      <Skeleton className="h-4 w-24" />
+                    ) : (
+                      <dd>
+                        {feedback?.customerPhone ? (
+                          <a href={`tel:${feedback.customerPhone}`}>
+                            {feedback.customerPhone}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
+                    )}
                   </div>
                 </dl>
               </div>
             </CardContent>
             <CardFooter className="flex flex-row items-center border-t bg-gray-50 px-6 py-3">
               <div className="text-xs text-muted-foreground">
-                Submitted at <time dateTime={moment(feedback?.createdAt).format("YYYY-MM-DD")}>{moment(feedback?.createdAt).format("MMMM D, YYYY")}</time>
+                Submitted at{" "}
+                <time
+                  dateTime={moment(feedback?.createdAt).format("YYYY-MM-DD")}
+                >
+                  {moment(feedback?.createdAt).format("MMMM D, YYYY")}
+                </time>
               </div>
             </CardFooter>
           </Card>
 
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">Related Feedback</CardTitle>
+              <CardTitle className="font-semibold text-base">
+                Related Feedback
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-6 text-sm space-y-3">
               {feedback?.relateds?.map((r: any) => (

@@ -84,9 +84,10 @@ export async function GET(
     const total = Number(stats[0]);
 
     // Map sentiment results to expected format
+    // ES|QL returns columns as [count, sentiment] based on STATS order
     const sentimentData = (sentimentResult.values || []).map((row: any) => {
-      const sent = row[0];
-      const count = Number(row[1]);
+      const count = Number(row[0]);
+      const sent = row[1];
       return {
         name: sent,
         count: count,

@@ -2,29 +2,16 @@ import { NextResponse } from "next/server";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { createFeedback } from "@/lib/elasticsearch";
 import { getChatModel, getEmbeddings } from "@/lib/llm";
+import { SENTIMENT_CLASSIFY, FEEDBACK_AI_RESPONSE } from "@/prompts";
 
-const TEXT_CLASIFY = `Classify the sentiment of the message
-Input: I had a terrible experience with this store. The clothes were of poor quality and overpriced.
-Output: negative
-
-Input: The clothing selection is decent, but the customer service needs improvement. It was just an okay experience.
-Output: neutral
-
-Input: I absolutely love shopping here! The staff is so helpful, and I always find stylish and affordable clothes.
-Output: positive
-
-Input: {input}
-Output:
-`;
-
-const AI_RESPONSE = `User given feedback for us, please provide a summary or suggestion how to address common issues raised to act for us as company. Format the results in markdown. Here is the feedback: {input}`;
+// Prompts are now centralized in @/prompts/index.ts
 
 export async function POST(req: Request) {
   const body = await req.json();
 
   try {
     // Classify Text using Fallback Model
-    const promptClassify = ChatPromptTemplate.fromTemplate(TEXT_CLASIFY);
+    const promptClassify = ChatPromptTemplate.fromTemplate(SENTIMENT_CLASSIFY);
     const formattedPromptClassify = await promptClassify.format({
       input: body.text,
     });
@@ -32,7 +19,8 @@ export async function POST(req: Request) {
     const textClassify = await modelClassify.invoke(formattedPromptClassify);
 
     // aiResponse feedback using Fallback Model
-    const promptResponse = ChatPromptTemplate.fromTemplate(AI_RESPONSE);
+    const promptResponse =
+      ChatPromptTemplate.fromTemplate(FEEDBACK_AI_RESPONSE);
     const formattedPromptResponse = await promptResponse.format({
       input: body.text,
     });
@@ -42,14 +30,24 @@ export async function POST(req: Request) {
     // Handle Optional Embeddings
     const vectorData = await getEmbeddings(body.text);
 
+    // Sanitize sentiment extraction
+    let sentiment = (textClassify.content as string).toLowerCase().trim();
+    if (sentiment.includes("positive")) sentiment = "positive";
+    else if (sentiment.includes("negative")) sentiment = "negative";
+    else if (sentiment.includes("neutral")) sentiment = "neutral";
+    else sentiment = "neutral"; // Default to neutral if unsure
+
     // Save Feedback to Elasticsearch
     const feedbackData: any = {
       teamId: body.teamId,
       rate: body.rate,
       description: body.text,
-      aiResponse: (textResponse.content as String).trim(),
-      sentiment: (textClassify.content as String).trim(),
+      aiResponse: (textResponse.content as string).trim(),
+      sentiment: sentiment,
       isResolved: false,
+      customerName: body.customerName || null,
+      customerEmail: body.customerEmail || null,
+      customerPhone: body.customerPhone || null,
     };
 
     if (vectorData && vectorData[0]) {

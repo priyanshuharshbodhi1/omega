@@ -1,4 +1,4 @@
-# Elasticsearch Agent Builder Hackathon Strategy for Zapfeed
+# Elasticsearch Agent Builder Hackathon Strategy for Omega
 
 ## 📋 Executive Summary
 

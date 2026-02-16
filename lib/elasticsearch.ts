@@ -78,6 +78,7 @@ export async function createFeedback(data: any) {
     index: "feedback",
     id: id,
     document: feedback,
+    pipeline: "elser-feedback-pipeline", // Auto-generate ELSER tokens
     refresh: true,
   });
 

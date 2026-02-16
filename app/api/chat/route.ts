@@ -1,80 +1,62 @@
 import { streamText, convertToCoreMessages } from "ai";
 import { esClient } from "@/lib/elasticsearch";
-import { getAISDKModel, getEmbeddings } from "@/lib/llm";
+import { getAISDKModel } from "@/lib/llm"; // REMOVED getEmbeddings
+import { CHAT_SYSTEM_PROMPT } from "@/prompts";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
-
-const formatMessage = (message: any) => {
-  return `${message.role}: ${message.content}`;
-};
 
 export async function POST(req: Request) {
   const { messages, team, session } = await req.json();
   const teamId = team?.id;
 
-  const formattedPreviousMessages = messages.slice(0, -1).map(formatMessage);
   const currentMessageContent = messages[messages.length - 1].content;
 
   try {
-    // Attempt to generate embeddings for kNN search
-    const vectorData = await getEmbeddings(currentMessageContent);
-
-    let relateds: any[] = [];
-
-    if (vectorData && vectorData[0]) {
-      // Use Elasticsearch kNN search for feedback context
-      const result_es = await esClient.search({
-        index: "feedback",
-        knn: {
-          field: "embedding",
-          query_vector: vectorData[0],
-          k: 40,
-          num_candidates: 200,
-          filter: {
-            term: { teamId: teamId },
-          },
+    // 🚀 NEW: Use ELSER (Sparse Vector) for Semantic Search
+    // No need for OpenAI embeddings!
+    const result_es = await esClient.search({
+      index: "feedback",
+      query: {
+        bool: {
+          must: [
+            { term: { teamId: teamId } }, // Filter by team first
+            {
+              text_expansion: {
+                "ml.tokens": {
+                  model_id: ".elser_model_2_linux-x86_64", // Built-in ELSER model
+                  model_text: currentMessageContent,
+                },
+              },
+            },
+          ],
         },
-        _source: ["description"],
-      });
-      relateds = result_es.hits.hits.map((hit: any) => ({
-        content: hit._source.description,
-      }));
-    } else {
-      // Fallback: Use standard text search if no embeddings
-      const result_es = await esClient.search({
-        index: "feedback",
-        query: {
-          bool: {
-            must: [
-              { match: { description: currentMessageContent } },
-              { term: { teamId: teamId } },
-            ],
-          },
-        },
-        size: 20,
-        _source: ["description"],
-      });
-      relateds = result_es.hits.hits.map((hit: any) => ({
-        content: hit._source.description,
-      }));
-    }
+      },
+      size: 10, // Get top 10 semantic matches
+      _source: ["description", "sentiment", "rate", "createdAt"],
+    });
 
-    const context = relateds.map((r) => r.content).join("\n- ");
+    const relateds = result_es.hits.hits.map((hit: any) => ({
+      content: hit._source.description,
+      sentiment: hit._source.sentiment,
+      rate: hit._source.rate,
+      date: hit._source.createdAt,
+    }));
+
+    // Format context for the LLM
+    const context = relateds
+      .map(
+        (r) =>
+          `- [${r.date?.split("T")[0]}] (${r.sentiment}, ${r.rate}★): ${r.content}`,
+      )
+      .join("\n");
 
     const model = getAISDKModel();
 
     const result = await streamText({
       model: model as any,
       messages: convertToCoreMessages(messages),
-      system: `You are a smart assistant who helps users analyze feedback for their company. Here is the user profile: \n- Name: ${session?.user?.name}\n\n
-      Here is the feedback list the company has received:
-      ${context || "No specific feedback found for this query."}
-
-      Rules:
-      - Format the results in markdown
-      - If you don't know the answer, just say you don't know. Don't try to make up an answer
-      - Answer concisely & in detail`,
+      system: CHAT_SYSTEM_PROMPT(session?.user?.name, context),
     });
 
     return result.toDataStreamResponse();
