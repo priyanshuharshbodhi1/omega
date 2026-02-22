@@ -21,17 +21,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
       authorize: async (credentials) => {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          console.log("Missing credentials");
+          return null;
+        }
 
         const user = await getUserByEmail(credentials.email as string);
-        if (!user || !user.password) return null;
+        if (!user || !user.password) {
+          console.log("User not found or no password");
+          return null;
+        }
 
         const isPasswordCorrect = await bcrypt.compare(
           credentials.password as string,
           user.password,
         );
 
-        if (!isPasswordCorrect) return null;
+        if (!isPasswordCorrect) {
+          console.log("Password incorrect");
+          return null;
+        }
 
         const { password, ...userWithoutPassword } = user;
         return userWithoutPassword;

@@ -1,25 +1,26 @@
 import { auth } from "@/auth";
-import Account from "./account";
-import Sidenav from "./sidenav";
+import TopNav from "@/components/ui/top-nav";
 
-export default async function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const session = await auth();
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidenav session={session} />
+    <div className="min-h-screen bg-[#EEE1CF] text-[#1F1A15] font-sans [background-image:radial-gradient(circle_at_top,_#fff8ed_0%,_#e6d8c6_55%,_#e4d6c3_100%)]">
+      <TopNav session={session} />
 
-      <div className="flex-1 overflow-x-auto">
-        <div className="flex justify-between items-center bg-white border-b border-gray-200 py-4 px-4 md:px-6">
-          <div className="flex items-center gap-4"></div>
-
-          <div className="flex items-center space-x-6">
-            <Account session={session} />
-          </div>
+      {/* 
+        Add top padding to account for fixed navbar. 
+        Navbar is roughly 80px high including padding. 
+      */}
+      <main className="pt-28 pb-12">
+        <div className="mx-auto w-full max-w-6xl px-6 lg:px-10">
+          {children}
         </div>
-
-        <div className="p-4 md:p-6">{children}</div>
-      </div>
+      </main>
     </div>
   );
 }

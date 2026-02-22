@@ -28,6 +28,7 @@ export interface Team {
   name: string;
   description?: string;
   style?: any;
+  issueTracker?: "github" | "linear";
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +51,23 @@ export async function createTeam(data: Partial<Team>) {
   });
 
   return team;
+}
+
+export async function updateTeam(id: string, data: Partial<Team>) {
+  const now = new Date().toISOString();
+  const doc = {
+    ...data,
+    updatedAt: now,
+  };
+
+  await esClient.update({
+    index: "teams",
+    id: id,
+    doc: doc,
+    refresh: true,
+  });
+
+  return { id, ...doc };
 }
 
 export async function getTeam(id: string) {
@@ -98,6 +116,9 @@ export interface User {
 export async function createUser(data: Partial<User>) {
   const id = data.id || generateId();
   const now = new Date().toISOString();
+  // Ensure email is lowercased
+  if (data.email) data.email = data.email.toLowerCase();
+
   const user = {
     ...data,
     id,
@@ -120,7 +141,7 @@ export async function getUserByEmail(email: string) {
     const result = await esClient.search({
       index: "users",
       query: {
-        term: { email: email },
+        match: { email: email.toLowerCase() },
       },
     });
     if (result.hits.total === 0 || (result.hits.total as any).value === 0)

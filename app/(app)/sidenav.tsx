@@ -4,7 +4,7 @@ import Link from "next/link";
 import { BotMessageSquare, Grid2X2, Home, LayoutDashboard, Link2, MessageSquareDashed, Palette, Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import Logo from "@/components/ui/logo/logo";
+import LogoMark from "@/components/ui/logo/logo-mark";
 import SelectTeam from "./select-team";
 
 export default function Sidenav({ session }: { session: any }) {
@@ -24,13 +24,13 @@ export default function Sidenav({ session }: { session: any }) {
       <div
         className={`${
           showSidebar ? "-translate-x-0" : "-translate-x-64"
-        } lg:-translate-x-0 w-64 absolute z-10 top-0 left-0 bottom-0 rounded-none lg:relative lg:flex flex-col bg-gradient-to-t from-gray-900 to-dark transition-transform shrink-0`}
+        } lg:-translate-x-0 w-64 absolute z-10 top-0 left-0 bottom-0 rounded-none lg:relative lg:flex flex-col bg-[#1F1A15] transition-transform shrink-0`}
       >
         <Link
           href="/dashboard"
-          className="shrink-0 p-3 border-b border-gray-600 text-white font-mono font-bold -tracking-wider flex items-center justify-center h-16"
+          className="shrink-0 p-3 border-b border-[#3A2F24] text-[#FFFDF7] font-display font-semibold tracking-wide flex items-center justify-center h-16"
         >
-          <Logo className="h-7" />
+          <LogoMark className="h-7 text-[#D2F7D7]" />
         </Link>
 
         <SelectTeam session={session} />
@@ -39,8 +39,8 @@ export default function Sidenav({ session }: { session: any }) {
           <li>
             <Link
               href="/dashboard"
-              className={`w-full text-sm text-white flex items-center space-x-2 px-4 py-3 rounded-md ${
-                pathname === "/dashboard" ? "bg-gradient-to-r from-brand text-dark" : "text-white/70 hover:text-white"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/dashboard" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
@@ -50,8 +50,8 @@ export default function Sidenav({ session }: { session: any }) {
           <li>
             <Link
               href="/feedback"
-              className={`w-full text-sm text-white flex items-center space-x-2 px-4 py-3 rounded-md ${
-                pathname === "/feedback" ? "bg-gradient-to-r from-brand text-dark" : "text-white/70 hover:text-white"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/feedback" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
               }`}
             >
               <MessageSquareDashed className="w-4 h-4" />
@@ -61,8 +61,8 @@ export default function Sidenav({ session }: { session: any }) {
           <li>
             <Link
               href="/analysis"
-              className={`w-full text-sm text-white flex items-center space-x-2 px-4 py-3 rounded-md ${
-                pathname === "/analysis" ? "bg-gradient-to-r from-brand text-dark" : "text-white/70 hover:text-white"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/analysis" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
               }`}
             >
               <BotMessageSquare className="w-4 h-4" />
@@ -83,8 +83,8 @@ export default function Sidenav({ session }: { session: any }) {
           <li>
             <Link
               href="/widgets"
-              className={`w-full text-sm text-white flex items-center space-x-2 px-4 py-3 rounded-md ${
-                pathname === "/widgets" ? "bg-gradient-to-r from-brand text-dark" : "text-white/70 hover:text-white"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/widgets" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
               }`}
             >
               <Palette className="w-4 h-4" />
@@ -94,8 +94,8 @@ export default function Sidenav({ session }: { session: any }) {
           <li>
             <Link
               href="/integrations"
-              className={`w-full text-sm text-white flex items-center space-x-2 px-4 py-3 rounded-md ${
-                pathname === "/integrations" ? "bg-gradient-to-r from-brand text-dark" : "text-white/70 hover:text-white"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/integrations" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
               }`}
             >
               <Link2 className="w-4 h-4" />

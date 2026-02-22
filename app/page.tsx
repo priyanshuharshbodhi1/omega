@@ -1,5 +1,4 @@
 import { auth } from "@/auth";
-import { BackgroundBeams } from "@/components/ui/background-beams";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/ui/navbar";
 import { CornerDownRight } from "lucide-react";
@@ -10,19 +9,15 @@ export default async function Home() {
 
   return (
     <>
-      <section className="min-h-screen relative flex items-center justify-center">
-        <BackgroundBeams />
+      <section className="min-h-screen relative flex items-center justify-center bg-[#EEE1CF] [background-image:radial-gradient(circle_at_top,_#fff8ed_0%,_#eee1cf_55%,_#e4d6c3_100%)]">
         <Navbar session={session} />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/50 via-transparent to-white/50"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-white/50 via-transparent to-white/50"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,_rgba(45,106,79,0.08),_transparent_45%),radial-gradient(circle_at_80%_30%,_rgba(124,58,237,0.12),_transparent_50%)]"></div>
         <div className="w-full max-w-5xl mx-auto px-4 relative pointer-events-none">
-          <h1 className="text-center font-bold text-4xl sm:text-5xl md:text-6xl lg:text-7xl text-balance mb-5 font-display">
-            Transform <span className="text-brand">Feedback</span>
-            <span className="animate-pulse"> 💬</span> into Actionable{" "}
-            <span className="text-brand">Insights</span>
-            <span className="animate-pulse">💡</span>
+          <h1 className="text-center font-medium text-4xl sm:text-5xl md:text-6xl lg:text-7xl text-balance mb-5 font-display text-[#1F1A15]">
+            Transform <span className="text-brand">Feedback</span> into
+            Actionable <span className="text-brand">Insights</span>
           </h1>
-          <p className="max-w-2xl mx-auto text-center text-balance text-lg md:text-xl opacity-70">
+          <p className="max-w-2xl mx-auto text-center text-balance text-lg md:text-xl text-[#4B3F35]">
             Omega empowers businesses to effortlessly gather, analyze, and act
             on customer feedback with the power of AI.
           </p>

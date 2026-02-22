@@ -1,6 +1,5 @@
-import { streamText, convertToCoreMessages } from "ai";
-import { esClient } from "@/lib/elasticsearch";
-import { getAISDKModel } from "@/lib/llm"; // REMOVED getEmbeddings
+import Groq from "groq-sdk";
+import { esClient, getTeam } from "@/lib/elasticsearch";
 import { CHAT_SYSTEM_PROMPT } from "@/prompts";
 
 // Allow streaming responses up to 30 seconds
@@ -24,7 +23,7 @@ export async function POST(req: Request) {
             {
               text_expansion: {
                 "ml.tokens": {
-                  model_id: ".elser_model_2_linux-x86_64", // Built-in ELSER model
+                  model_id: ".elser-2-elasticsearch", // Built-in ELSER model
                   model_text: currentMessageContent,
                 },
               },
@@ -51,24 +50,45 @@ export async function POST(req: Request) {
       )
       .join("\n");
 
-    const model = getAISDKModel();
+    // Fetch team details to get preferences
+    const teamDetails = await getTeam(teamId);
+    const issueTracker = teamDetails?.issueTracker || "github"; // Default to GitHub
 
-    const result = await streamText({
-      model: model as any,
-      messages: convertToCoreMessages(messages),
-      system: CHAT_SYSTEM_PROMPT(session?.user?.name, context),
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: `${CHAT_SYSTEM_PROMPT(session?.user?.name, context)}
+          
+          SYSTEM CONTEXT:
+          - Preferred Issue Tracker: ${issueTracker}
+          - If the user asks to "file a bug" or "create a ticket", confirm the details and then say you are using the ${issueTracker} tool.
+          `,
+        },
+        ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+      ],
+      model: "llama-3.3-70b-versatile",
     });
 
-    return result.toDataStreamResponse();
+    const text = completion.choices[0]?.message?.content || "";
+    return new Response(text);
   } catch (error) {
     console.error("Chat error:", error);
     // Fallback if ES search fails
-    const model = getAISDKModel();
-    const result = await streamText({
-      model: model as any,
-      messages: convertToCoreMessages(messages),
-      system: `You are a smart assistant. (Note: Feedback search currently unavailable) \n- Name: ${session?.user?.name}`,
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: `You are a smart assistant. (Note: Feedback search currently unavailable) \n- Name: ${session?.user?.name}`,
+        },
+        ...messages.map((m: any) => ({ role: m.role, content: m.content })),
+      ],
+      model: "llama-3.3-70b-versatile",
     });
-    return result.toDataStreamResponse();
+
+    const text = completion.choices[0]?.message?.content || "";
+    return new Response(text);
   }
 }

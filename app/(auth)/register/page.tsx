@@ -61,11 +61,18 @@ export default function Register() {
   };
 
   return (
-    <div className="flex items-center justify-center h-screen">
+    <div className="flex items-center justify-center h-screen bg-[#EEE1CF] [background-image:radial-gradient(circle_at_top,_#fff8ed_0%,_#eee1cf_55%,_#e4d6c3_100%)]">
       <div className="max-w-lg w-full mx-auto px-4">
-        <h1 className="font-bold text-center text-xl md:text-2xl lg:text-3xl mb-8">Sign Up</h1>
+        <div className="text-center mb-8">
+          <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35] mb-2">
+            Let’s Get Started
+          </div>
+          <h1 className="font-medium text-2xl md:text-3xl text-[#1F1A15]">
+            Sign Up
+          </h1>
+        </div>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 bg-white p-4 md:p-6 rounded-md border shadow-sm">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 bg-[#FFFDF7] p-6 rounded-2xl border border-[#D2C4B3] shadow-[0_16px_40px_rgba(55,40,25,0.18)]">
             <FormField
               control={form.control}
               name="name"
@@ -108,8 +115,11 @@ export default function Register() {
             <Button type="submit" disabled={isSubmitting}>Sign Up</Button>
           </form>
         </Form>
-        <p className="mt-6 text-center">
-          Already have an account? <Link href="/login" className="underline">Sign In</Link>
+        <p className="mt-6 text-center text-[#4B3F35]">
+          Already have an account?{" "}
+          <Link href="/login" className="underline text-[#1F1A15]">
+            Sign In
+          </Link>
         </p>
       </div>
     </div>

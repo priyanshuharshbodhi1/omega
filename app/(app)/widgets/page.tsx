@@ -1,7 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Save, XIcon } from "lucide-react";
 import { ChromePicker } from "react-color";
@@ -11,10 +16,27 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { useTeam } from "@/lib/store";
 
@@ -41,20 +63,19 @@ export default function Page() {
     resolver: zodResolver(formSchema),
   });
 
-
   useEffect(() => {
     if (team) {
-      form.setValue('button_bg', team.style.button_bg)
-      form.setValue('button_color', team.style.button_color)
-      form.setValue('button_text', team.style.button_text)
-      form.setValue('button_position', team.style.button_position)
-      form.setValue('form_bg', team.style.form_bg)
-      form.setValue('form_color', team.style.form_color)
-      form.setValue('form_title', team.style.form_title)
-      form.setValue('form_subtitle', team.style.form_subtitle)
-      form.setValue('form_rate_text', team.style.form_rate_text)
-      form.setValue('form_details_text', team.style.form_details_text)
-      form.setValue('form_button_text', team.style.form_button_text)
+      form.setValue("button_bg", team.style.button_bg);
+      form.setValue("button_color", team.style.button_color);
+      form.setValue("button_text", team.style.button_text);
+      form.setValue("button_position", team.style.button_position);
+      form.setValue("form_bg", team.style.form_bg);
+      form.setValue("form_color", team.style.form_color);
+      form.setValue("form_title", team.style.form_title);
+      form.setValue("form_subtitle", team.style.form_subtitle);
+      form.setValue("form_rate_text", team.style.form_rate_text);
+      form.setValue("form_details_text", team.style.form_details_text);
+      form.setValue("form_button_text", team.style.form_button_text);
     }
   }, [team, form]);
 
@@ -64,7 +85,7 @@ export default function Page() {
 
     fetch("/api/team/style", {
       method: "POST",
-      body: JSON.stringify({teamId: team.id, style: values}),
+      body: JSON.stringify({ teamId: team.id, style: values }),
       headers: {
         "Content-Type": "application/json",
       },
@@ -89,17 +110,14 @@ export default function Page() {
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-bold text-xl">Widgets</h1>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Card>
-              <CardHeader className="border-b py-3">
-                <h2 className="font-bold">Settings</h2>
+            <CardHeader className="border-b py-4">
+                <h2 className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
+                  Settings
+                </h2>
               </CardHeader>
               <CardContent className="pt-6">
                 <Tabs defaultValue="form" className="w-full">
@@ -107,11 +125,17 @@ export default function Page() {
                     <TabsTrigger value="form">Feedback Form</TabsTrigger>
                     <TabsTrigger value="button">Button Trigger</TabsTrigger>
                   </TabsList>
-                  <TabsContent value="form" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <TabsContent
+                    value="form"
+                    className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                  >
                     <div className="space-y-2">
                       <Label htmlFor="form_bg">Background</Label>
                       <Popover>
-                        <PopoverTrigger className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50" style={{ background: form.watch('form_bg') }}></PopoverTrigger>
+                        <PopoverTrigger
+                          className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50"
+                          style={{ background: form.watch("form_bg") }}
+                        ></PopoverTrigger>
                         <PopoverContent className="p-0 bg-transparent border-none shadow-none flex items-center justify-center">
                           <ChromePicker
                             color={form.watch("form_bg")}
@@ -125,7 +149,10 @@ export default function Page() {
                     <div className="space-y-2">
                       <Label htmlFor="form_color">Foreground</Label>
                       <Popover>
-                        <PopoverTrigger className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50" style={{ background: form.watch('form_color') }}></PopoverTrigger>
+                        <PopoverTrigger
+                          className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50"
+                          style={{ background: form.watch("form_color") }}
+                        ></PopoverTrigger>
                         <PopoverContent className="p-0 bg-transparent border-none shadow-none flex items-center justify-center">
                           <ChromePicker
                             color={form.watch("form_color")}
@@ -143,7 +170,11 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Title</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -156,7 +187,11 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Subtitle</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -169,7 +204,11 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Rate Text</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -182,7 +221,11 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Details Text</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -195,18 +238,28 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Button Text</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </TabsContent>
-                  <TabsContent value="button" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <TabsContent
+                    value="button"
+                    className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                  >
+                    <div className="space-y-2">
                       <Label htmlFor="button_bg">Background</Label>
                       <Popover>
-                        <PopoverTrigger className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50" style={{ background: form.watch('button_bg') }}></PopoverTrigger>
+                        <PopoverTrigger
+                          className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50"
+                          style={{ background: form.watch("button_bg") }}
+                        ></PopoverTrigger>
                         <PopoverContent className="p-0 bg-transparent border-none shadow-none flex items-center justify-center">
                           <ChromePicker
                             color={form.watch("button_bg")}
@@ -220,7 +273,10 @@ export default function Page() {
                     <div className="space-y-2">
                       <Label htmlFor="button_color">Foreground</Label>
                       <Popover>
-                        <PopoverTrigger className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50" style={{ background: form.watch('button_color') }}></PopoverTrigger>
+                        <PopoverTrigger
+                          className="w-full h-10 rounded-full border border-dashed border-black text-xs text-black/50"
+                          style={{ background: form.watch("button_color") }}
+                        ></PopoverTrigger>
                         <PopoverContent className="p-0 bg-transparent border-none shadow-none flex items-center justify-center">
                           <ChromePicker
                             color={form.watch("button_color")}
@@ -238,7 +294,11 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Text</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="...." disabled={isSubmitting} />
+                            <Input
+                              {...field}
+                              placeholder="...."
+                              disabled={isSubmitting}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -251,15 +311,23 @@ export default function Page() {
                         <FormItem>
                           <FormLabel>Position</FormLabel>
                           <FormControl>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              disabled={isSubmitting}
+                            >
                               <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Position" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="right">Right</SelectItem>
                                 <SelectItem value="left">Left</SelectItem>
-                                <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                                <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                                <SelectItem value="bottom-left">
+                                  Bottom Left
+                                </SelectItem>
+                                <SelectItem value="bottom-right">
+                                  Bottom Right
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                           </FormControl>
@@ -271,7 +339,12 @@ export default function Page() {
                 </Tabs>
               </CardContent>
               <CardFooter className="border-t py-3">
-                <Button variant="dark" type="submit" disabled={isSubmitting} className="gap-2">
+                <Button
+                  variant="dark"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="gap-2"
+                >
                   <Save className="w-5" />
                   Save
                 </Button>
@@ -281,73 +354,96 @@ export default function Page() {
         </Form>
 
         <Card>
-          <CardHeader className="border-b py-3">
-            <h2 className="font-bold">Preview</h2>
+          <CardHeader className="border-b py-4">
+            <h2 className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
+              Preview
+            </h2>
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className="relative w-full aspect-square bg-white"
+              className="relative w-full aspect-square bg-[#EEE1CF]"
               style={{
-                backgroundColor: `#ffffff`,
-                backgroundImage: `radial-gradient(#000000 0.5px, #ffffff 0.5px)`,
+                backgroundColor: `#EEE1CF`,
+                backgroundImage: `radial-gradient(#D9CDBA 0.5px, #EEE1CF 0.5px)`,
                 backgroundSize: `10px 10px`,
               }}
             >
-              <Tabs defaultValue="form" className="w-full flex items-center justify-center pt-4">
+              <Tabs
+                defaultValue="form"
+                className="w-full flex items-center justify-center pt-4"
+              >
                 <TabsList>
                   <TabsTrigger value="form">Feedback Form</TabsTrigger>
                   <TabsTrigger value="button">Button Trigger</TabsTrigger>
                 </TabsList>
                 <TabsContent value="form">
-                  <div className="absolute bottom-4 right-4 max-w-xs w-full bg-white rounded-xl">
-                    <div className={`w-full rounded-xl p-4`} style={{ backgroundColor: form.watch("form_bg") }}>
-                      <div className="flex items-start justify-between mb-3" style={{ color: form.watch("form_color") }}>
+                  <div className="absolute bottom-4 right-4 max-w-[330px] w-full bg-white rounded-xl">
+                    <div
+                      className={`w-full min-h-[390px] rounded-xl p-3`}
+                      style={{ backgroundColor: form.watch("form_bg") }}
+                    >
+                      <div
+                        className="flex items-start justify-between mb-2"
+                        style={{ color: form.watch("form_color") }}
+                      >
                         <div>
-                          <h6 className="font-bold">{form.watch("form_title")}</h6>
-                          <p className="text-sm">{form.watch("form_subtitle")}</p>
+                          <h6 className="font-bold text-sm">
+                            {form.watch("form_title")}
+                          </h6>
+                          <p className="text-xs">
+                            {form.watch("form_subtitle")}
+                          </p>
                         </div>
-                        <button type="button" className="p-1 bg-white/50 rounded-full" style={{ color: form.watch("form_bg") }}>
+                        <button
+                          type="button"
+                          className="p-1 bg-white/50 rounded-full"
+                          style={{ color: form.watch("form_bg") }}
+                        >
                           <XIcon className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="bg-white/90 rounded-lg p-3">
-                        <p className="text-sm mb-2">{form.watch("form_rate_text")}</p>
-                        <div className="grid grid-cols-5 gap-3">
+                        <p className="text-xs mb-2">
+                          {form.watch("form_rate_text")}
+                        </p>
+                        <div className="grid grid-cols-5 gap-2">
                           <button
                             type="button"
                             className={`w-full bg-white aspect-square shadow rounded-md border active:scale-95 transition-all hover:border-gray-300`}
                           >
-                            1
+                            <span className="text-xs">1</span>
                           </button>
                           <button
                             type="button"
                             className={`w-full bg-white aspect-square shadow rounded-md border active:scale-95 transition-all hover:border-gray-300`}
                           >
-                            2
+                            <span className="text-xs">2</span>
                           </button>
                           <button
                             type="button"
                             className={`w-full bg-white aspect-square shadow rounded-md border active:scale-95 transition-all hover:border-gray-300`}
                           >
-                            3
+                            <span className="text-xs">3</span>
                           </button>
                           <button
                             type="button"
                             className={`w-full bg-white aspect-square shadow rounded-md border active:scale-95 transition-all hover:border-gray-300`}
                           >
-                            4
+                            <span className="text-xs">4</span>
                           </button>
                           <button
                             type="button"
                             className={`w-full bg-white aspect-square shadow rounded-md border active:scale-95 transition-all hover:border-gray-300`}
                           >
-                            5
+                            <span className="text-xs">5</span>
                           </button>
                         </div>
-                        <p className="text-sm mb-2 mt-3">{form.watch("form_details_text")}</p>
+                        <p className="text-xs mb-2 mt-3">
+                          {form.watch("form_details_text")}
+                        </p>
                         <textarea
                           className="w-full rounded border p-3 placeholder:text-sm mb-2"
-                          rows={6}
+                          rows={4}
                           placeholder="Please let us know what's your feedback"
                         ></textarea>
 
@@ -355,7 +451,10 @@ export default function Page() {
                           type="button"
                           variant="brand"
                           className="w-full disabled:contrast-75 disabled:cursor-not-allowed"
-                          style={{ background: form.watch("form_bg"), color: form.watch("form_color") }}
+                          style={{
+                            background: form.watch("form_bg"),
+                            color: form.watch("form_color"),
+                          }}
                         >
                           {form.watch("form_button_text")}
                         </Button>
@@ -367,19 +466,26 @@ export default function Page() {
                   <div
                     className={clsx(
                       {
-                        "absolute right-0 px-4 py-2 rounded-t-lg -rotate-90 bottom-2/3 origin-bottom-right": form.watch("button_position") === "right",
+                        "absolute right-0 px-4 py-2 rounded-t-lg -rotate-90 bottom-2/3 origin-bottom-right":
+                          form.watch("button_position") === "right",
                       },
                       {
-                        "absolute left-0 px-4 py-2 rounded-t-lg rotate-90 bottom-2/3 origin-bottom-left": form.watch("button_position") === "left",
+                        "absolute left-0 px-4 py-2 rounded-t-lg rotate-90 bottom-2/3 origin-bottom-left":
+                          form.watch("button_position") === "left",
                       },
                       {
-                        "absolute right-4 px-4 py-2 rounded-t-lg bottom-0": form.watch("button_position") === "bottom-right",
+                        "absolute right-4 px-4 py-2 rounded-t-lg bottom-0":
+                          form.watch("button_position") === "bottom-right",
                       },
                       {
-                        "absolute left-4 px-4 py-2 rounded-t-lg bottom-0": form.watch("button_position") === "bottom-left",
-                      }
+                        "absolute left-4 px-4 py-2 rounded-t-lg bottom-0":
+                          form.watch("button_position") === "bottom-left",
+                      },
                     )}
-                    style={{ background: form.watch("button_bg"), color: form.watch("button_color") }}
+                    style={{
+                      background: form.watch("button_bg"),
+                      color: form.watch("button_color"),
+                    }}
                   >
                     {form.watch("button_text")}
                   </div>
@@ -388,7 +494,6 @@ export default function Page() {
             </div>
           </CardContent>
         </Card>
-      </div>
-    </>
+    </div>
   );
 }

@@ -2,6 +2,17 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { SessionProvider } from "next-auth/react";
+import { Fraunces, Space_Grotesk } from "next/font/google";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "Omega",
@@ -16,8 +27,8 @@ export default function RootLayout({
 }>) {
   return (
     <SessionProvider>
-      <html lang="en">
-        <body className="antialiased">
+      <html lang="en" className={`${spaceGrotesk.variable} ${fraunces.variable}`}>
+        <body className="antialiased font-sans">
           {children}
           <Toaster />
         </body>

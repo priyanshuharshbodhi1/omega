@@ -51,7 +51,9 @@ export default function SummaryFeedback() {
   return (
     <>
       <AlertDialog>
-        <AlertDialogTrigger className={`${buttonVariants({ variant: "brand" })} gap-2`}>
+        <AlertDialogTrigger
+          className={`${buttonVariants({ variant: "violetSoft" })} gap-2 rounded-full px-5 shadow-[0_8px_20px_rgba(76,29,149,0.18)]`}
+        >
           <Sparkles className="w-4 h-4" />
           Summary
         </AlertDialogTrigger>
@@ -60,13 +62,13 @@ export default function SummaryFeedback() {
             <AlertDialogTitle>Select Sentiment to Summarize</AlertDialogTitle>
             <AlertDialogDescription>
               <div className="flex items-center gap-2 mb-4">
-                <Button size="sm" disabled={summarizing} variant={activeSentiment === "all" ? "dark" : "outline"} onClick={() => handleSummarize("all")}>
+                <Button size="sm" disabled={summarizing} variant={activeSentiment === "all" ? "violetSoft" : "outline"} onClick={() => handleSummarize("all")}>
                   All Sentiment
                 </Button>
                 <Button
                   size="sm"
                   disabled={summarizing}
-                  variant={activeSentiment === "positive" ? "dark" : "outline"}
+                  variant={activeSentiment === "positive" ? "violetSoft" : "outline"}
                   onClick={() => handleSummarize("positive")}
                 >
                   Positive
@@ -74,7 +76,7 @@ export default function SummaryFeedback() {
                 <Button
                   size="sm"
                   disabled={summarizing}
-                  variant={activeSentiment === "neutral" ? "dark" : "outline"}
+                  variant={activeSentiment === "neutral" ? "violetSoft" : "outline"}
                   onClick={() => handleSummarize("neutral")}
                 >
                   Neutral
@@ -82,13 +84,13 @@ export default function SummaryFeedback() {
                 <Button
                   size="sm"
                   disabled={summarizing}
-                  variant={activeSentiment === "negative" ? "dark" : "outline"}
+                  variant={activeSentiment === "negative" ? "violetSoft" : "outline"}
                   onClick={() => handleSummarize("negative")}
                 >
                   Negative
                 </Button>
               </div>
-              <div className="border border-dashed p-4 rounded-md">
+              <div className="border border-dashed border-[#D9CDBA] p-4 rounded-xl text-[#1F1A15]">
                 {summarizing ? (
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />

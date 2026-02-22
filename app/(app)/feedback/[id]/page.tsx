@@ -46,20 +46,27 @@ export default function Page({ params }: { params: { id: string } }) {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-bold text-xl">Feedback Detail</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35] mb-2">
+            Feedback
+          </div>
+          <h1 className="font-medium text-2xl text-[#1F1A15]">
+            Feedback Detail
+          </h1>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
-          <Card className="sm:col-span-2 mb-5">
-            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">
+          <Card className="sm:col-span-2 mb-6">
+            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b border-[#D2C4B3] bg-[#F4EBDD] px-6 py-4">
+              <CardTitle className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
                 User Feedback
               </CardTitle>
               <Rating value={feedback?.rate ?? 0} />
             </CardHeader>
-            <CardContent className="prose pt-4">
+            <CardContent className="prose pt-6 text-[#1F1A15]">
               {isLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-4 w-full" />
@@ -71,20 +78,20 @@ export default function Page({ params }: { params: { id: string } }) {
             </CardContent>
           </Card>
           <Card className="sm:col-span-2">
-            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">
+            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b border-[#D2C4B3] bg-[#F4EBDD] px-6 py-4">
+              <CardTitle className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
                 AI Generated Response
               </CardTitle>
               <div
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] capitalize ${
-                  feedback.sentiment === "positive" && "bg-[#00dc94] text-white"
-                } ${feedback.sentiment === "negative" && "bg-[#f70030] text-white"} ${feedback.sentiment === "neutral" && "bg-gray-900 text-white"}`}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest font-bold ${
+                  feedback.sentiment === "positive" && "bg-[#D2F7D7] text-[#14532d]"
+                } ${feedback.sentiment === "negative" && "bg-[#F8E1D5] text-[#B42318]"} ${feedback.sentiment === "neutral" && "bg-[#E6D8C6] text-[#4B3F35]"}`}
               >
                 <SmilePlus className="w-3 h-3" />
                 {feedback.sentiment}
               </div>
             </CardHeader>
-            <CardContent className="pt-4 prose prose-p:text-sm prose-li:text-sm prose-h1:text-xl prose-h2:text-lg prose-h3:text-lg prose-h4:text-lg prose-h5:text-lg prose-h6:text-lg">
+            <CardContent className="pt-6 prose prose-p:text-sm prose-li:text-sm prose-h1:text-xl prose-h2:text-lg prose-h3:text-lg prose-h4:text-lg prose-h5:text-lg prose-h6:text-lg text-[#1F1A15]">
               {isLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-4 w-full" />
@@ -102,13 +109,15 @@ export default function Page({ params }: { params: { id: string } }) {
           </Card>
         </div>
         <div>
-          <Card className="overflow-hidden mb-5">
-            <CardContent className="p-6 text-sm">
+          <Card className="overflow-hidden mb-6">
+            <CardContent className="p-6 text-sm text-[#1F1A15]">
               <div className="grid gap-3">
-                <div className="font-semibold">Customer Information</div>
+                <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
+                  Customer Information
+                </div>
                 <dl className="grid gap-3">
                   <div className="flex items-center justify-between">
-                    <dt className="text-muted-foreground">Name</dt>
+                    <dt className="text-[#4B3F35]">Name</dt>
                     {isLoading ? (
                       <Skeleton className="h-4 w-20" />
                     ) : (
@@ -116,7 +125,7 @@ export default function Page({ params }: { params: { id: string } }) {
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <dt className="text-muted-foreground">Email</dt>
+                    <dt className="text-[#4B3F35]">Email</dt>
                     {isLoading ? (
                       <Skeleton className="h-4 w-32" />
                     ) : (
@@ -132,7 +141,7 @@ export default function Page({ params }: { params: { id: string } }) {
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <dt className="text-muted-foreground">Phone</dt>
+                    <dt className="text-[#4B3F35]">Phone</dt>
                     {isLoading ? (
                       <Skeleton className="h-4 w-24" />
                     ) : (
@@ -150,8 +159,8 @@ export default function Page({ params }: { params: { id: string } }) {
                 </dl>
               </div>
             </CardContent>
-            <CardFooter className="flex flex-row items-center border-t bg-gray-50 px-6 py-3">
-              <div className="text-xs text-muted-foreground">
+            <CardFooter className="flex flex-row items-center border-t border-[#D2C4B3] bg-[#F4EBDD] px-6 py-3">
+              <div className="text-xs text-[#4B3F35]">
                 Submitted at{" "}
                 <time
                   dateTime={moment(feedback?.createdAt).format("YYYY-MM-DD")}
@@ -163,19 +172,19 @@ export default function Page({ params }: { params: { id: string } }) {
           </Card>
 
           <Card className="overflow-hidden">
-            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b bg-gray-50 px-6 py-3">
-              <CardTitle className="font-semibold text-base">
+            <CardHeader className="flex flex-col md:flex-row justify-between items-center border-b border-[#D2C4B3] bg-[#F4EBDD] px-6 py-4">
+              <CardTitle className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
                 Related Feedback
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 text-sm space-y-3">
+            <CardContent className="p-6 text-sm space-y-3 text-[#1F1A15]">
               {feedback?.relateds?.map((r: any) => (
                 <Link
                   href={`/feedback/${r.metadata.feedbackId}`}
                   key={r.id}
-                  className={`line-clamp-2 border-l-4 pl-2 ${r.metadata.sentiment === "positive" && "border-[#00dc94]"} ${
-                    r.metadata.sentiment === "negative" && "border-[#f70030]"
-                  } ${r.metadata.sentiment === "neutral" && "border-gray-900"}`}
+                  className={`line-clamp-2 border-l-4 pl-3 ${r.metadata.sentiment === "positive" && "border-[#2D6A4F]"} ${
+                    r.metadata.sentiment === "negative" && "border-[#B42318]"
+                  } ${r.metadata.sentiment === "neutral" && "border-[#4B3F35]"}`}
                 >
                   {r.content}
                 </Link>

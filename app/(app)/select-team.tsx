@@ -49,7 +49,7 @@ export default function SelectTeam({ session }: { session: any }) {
     <>
       <div className="p-4">
         <DropdownMenu>
-          <DropdownMenuTrigger className="text-white border border-white/20 w-full p-2.5 rounded-md flex items-center justify-between text-xs font-medium hover:border-white/50 hover:bg-white/10">
+          <DropdownMenuTrigger className="w-full rounded-full border border-[#D9CDBA] bg-[#FFFDF7] px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#4B3F35] hover:bg-[#E6D8C6] flex items-center justify-between">
             <span>{activeTeam?.name}</span>
             <ChevronDown className="w-4 h-4" />
           </DropdownMenuTrigger>
