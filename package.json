@@ -8,6 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "setup:elastic-feedback": "node scripts/setup-elastic-feedback.mjs",
+    "sync:agent-builder": "node scripts/sync-agent-builder.mjs",
+    "eval:agent-chat": "node scripts/eval-agent-chat.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

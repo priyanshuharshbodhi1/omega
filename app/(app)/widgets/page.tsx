@@ -361,10 +361,10 @@ export default function Page() {
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className="relative w-full aspect-square bg-[#EEE1CF]"
+              className="relative w-full aspect-square bg-[#E6D8C6]"
               style={{
-                backgroundColor: `#EEE1CF`,
-                backgroundImage: `radial-gradient(#D9CDBA 0.5px, #EEE1CF 0.5px)`,
+                backgroundColor: `#E6D8C6`,
+                backgroundImage: `radial-gradient(#9B8772 0.6px, #E6D8C6 0.6px)`,
                 backgroundSize: `10px 10px`,
               }}
             >
@@ -377,9 +377,9 @@ export default function Page() {
                   <TabsTrigger value="button">Button Trigger</TabsTrigger>
                 </TabsList>
                 <TabsContent value="form">
-                  <div className="absolute bottom-4 right-4 max-w-[330px] w-full bg-white rounded-xl">
+                  <div className="absolute bottom-4 right-4 max-w-[330px] w-full bg-[#FFFDF7] rounded-2xl border border-[#D2C4B3] shadow-[0_16px_40px_rgba(55,40,25,0.18)]">
                     <div
-                      className={`w-full min-h-[390px] rounded-xl p-3`}
+                      className={`w-full min-h-[390px] rounded-2xl p-3`}
                       style={{ backgroundColor: form.watch("form_bg") }}
                     >
                       <div

@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
-import { getChatModel } from "@/lib/llm";
 import { NextResponse } from "next/server";
-import { esClient } from "@/lib/elasticsearch";
+import { esClient, runElasticCompletion } from "@/lib/elasticsearch";
 import { getSummaryPrompt } from "@/prompts";
 
 export async function GET(req: Request) {
@@ -90,16 +89,16 @@ export async function GET(req: Request) {
     // Use Omega Strategic Analysis
     const { invokeAgent } = await import("@/lib/agent-builder");
 
-    const agentId = "omega_summarizer";
+    const agentId =
+      process.env.ELASTIC_SUMMARY_AGENT_ID || "omega_summary_agent_v2";
     const strategicInstructions = getSummaryPrompt(
       sentiment || "all",
       feedbacks.join("\n"),
     );
 
-    // OPTIMIZATION: We provide a dual-mode strategy.
-    // 'deep' uses the Elastic Agent Builder for full orchestration.
-    // 'fast' uses the Direct Agent logic for ~3s low-latency response.
-    const mode: string = "fast";
+    // Keep mode configurable so hackathon demos can run fully through Agent Builder.
+    // Set ELASTIC_SUMMARY_MODE=fast for low-latency local fallback.
+    const mode = (process.env.ELASTIC_SUMMARY_MODE || "deep").toLowerCase();
 
     try {
       if (mode === "deep") {
@@ -107,33 +106,33 @@ export async function GET(req: Request) {
           agentId,
           message: strategicInstructions,
         });
+        const message =
+          (response as any)?.response?.message ||
+          (response as any)?.message ||
+          "No summary returned by agent.";
         return NextResponse.json({
           success: true,
           message: "Strategic summary completed (Deep Mode)",
-          data: response.message,
+          data: message,
         });
       }
 
-      // Fast Agent Path: Matches Agent instructions but optimizes for speed
-      const model = getChatModel(0.3); // Lower temperature for professional summaries
-      const res = await model.invoke(strategicInstructions);
+      const res = await runElasticCompletion(strategicInstructions);
 
       return NextResponse.json({
         success: true,
         message: "Strategic summary completed",
-        data: res.content,
+        data: res || "No summary generated.",
       });
     } catch (error) {
       console.error("Omega Agent Error:", error);
-      // Absolute fallback if everything fails
-      const model = getChatModel(0.7);
-      const res = await model.invoke(
+      const res = await runElasticCompletion(
         `Summarize these customer feedbacks for business: ${feedbacks.join("\n")}`,
       );
       return NextResponse.json({
         success: true,
         message: "Summary completed (Fallback)",
-        data: res.content,
+        data: res || "No summary generated.",
       });
     }
   } catch (error) {

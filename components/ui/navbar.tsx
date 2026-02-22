@@ -23,7 +23,6 @@ export default function Navbar({ session }: { session: Session | null }) {
                   size="sm"
                   className="gap-2 shadow-sm hover:shadow transition-all hover:scale-[.98] rounded-full"
                 >
-                  <LayoutDashboard className="size-4 shrink-0" />
                   Dashboard
                 </Button>
               </Link>

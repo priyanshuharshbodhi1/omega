@@ -9,6 +9,11 @@ const endpoint =
   process.env.ENDPOINT ||
   process.env.ELASTICSEARCH_ENDPOINT;
 let apiKey = process.env.ELASTIC_API_KEY || "";
+const feedbackPipelineId =
+  process.env.ELASTIC_FEEDBACK_INGEST_PIPELINE || "feedback-ingest-pipeline";
+const embeddingEndpointId =
+  process.env.ELASTIC_EMBEDDING_ENDPOINT_ID || ".openai-text-embedding-3-small";
+const embeddingDims = Number(process.env.ELASTIC_EMBEDDING_DIMS || "1536");
 
 // Handle keys with prefixes like 'essu_' or 'ApiKey '
 const client = new Client({
@@ -20,6 +25,39 @@ const client = new Client({
 
 async function createIndices() {
   console.log("--- Creating Elasticsearch Indices ---");
+
+  // 0. Feedback ingest pipeline (Elastic embedding inference at write-time)
+  try {
+    await client.ingest.putPipeline({
+      id: feedbackPipelineId,
+      processors: [
+        {
+          inference: {
+            model_id: embeddingEndpointId,
+            input_output: [
+              {
+                input_field: "description",
+                output_field: "embedding",
+              },
+            ],
+            ignore_missing: true,
+            ignore_failure: true,
+          },
+        },
+      ],
+      on_failure: [
+        {
+          set: {
+            field: "ingest_embedding_error",
+            value: "{{ _ingest.on_failure_message }}",
+          },
+        },
+      ],
+    });
+    console.log(`✅ Upserted ingest pipeline: ${feedbackPipelineId}`);
+  } catch (e: any) {
+    console.error("❌ Error creating feedback ingest pipeline:", e.message || e);
+  }
 
   // 1. Feedback Index
   try {
@@ -37,11 +75,17 @@ async function createIndices() {
             aiResponse: { type: "text" },
             sentiment: { type: "keyword" },
             isResolved: { type: "boolean" },
+            customerName: { type: "keyword" },
+            customerEmail: { type: "keyword" },
+            customerPhone: { type: "keyword" },
+            githubIssueUrl: { type: "keyword", index: false },
+            githubIssueNumber: { type: "integer" },
+            githubIssueCreatedAt: { type: "date" },
             createdAt: { type: "date" },
             updatedAt: { type: "date" },
             embedding: {
               type: "dense_vector",
-              dims: 1536,
+              dims: embeddingDims,
               index: true,
               similarity: "cosine",
             },

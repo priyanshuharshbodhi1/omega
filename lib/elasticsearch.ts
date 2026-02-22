@@ -5,6 +5,13 @@ const endpoint =
   process.env.ENDPOINT ||
   process.env.ELASTICSEARCH_ENDPOINT;
 const apiKey = process.env.ELASTIC_API_KEY;
+const feedbackIndex = process.env.ELASTIC_FEEDBACK_INDEX || "feedback";
+const feedbackPipeline =
+  process.env.ELASTIC_FEEDBACK_INGEST_PIPELINE || "feedback-ingest-pipeline";
+const embeddingEndpointId =
+  process.env.ELASTIC_EMBEDDING_ENDPOINT_ID || ".openai-text-embedding-3-small";
+const completionEndpointId =
+  process.env.ELASTIC_COMPLETION_ENDPOINT_ID || ".openai-gpt-4.1-mini-completion";
 
 export const esClient = new Client({
   node: endpoint,
@@ -92,13 +99,23 @@ export async function createFeedback(data: any) {
     updatedAt: now,
   };
 
-  await esClient.index({
-    index: "feedback",
-    id: id,
-    document: feedback,
-    pipeline: "elser-feedback-pipeline", // Auto-generate ELSER tokens
-    refresh: true,
-  });
+  try {
+    await esClient.index({
+      index: feedbackIndex,
+      id: id,
+      document: feedback,
+      pipeline: feedbackPipeline,
+      refresh: true,
+    });
+  } catch (error) {
+    // Keep ingestion resilient if the pipeline is temporarily unavailable.
+    await esClient.index({
+      index: feedbackIndex,
+      id: id,
+      document: feedback,
+      refresh: true,
+    });
+  }
 
   return feedback;
 }
@@ -162,5 +179,95 @@ export async function getUserById(id: string) {
     return { id: result._id, ...(result._source as any) } as User;
   } catch (error) {
     return null;
+  }
+}
+
+export async function getElasticTextEmbedding(text: string) {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) return null;
+
+  try {
+    const result = await esClient.inference.textEmbedding({
+      inference_id: embeddingEndpointId,
+      input: cleanText,
+      timeout: "20s",
+    });
+
+    const embedding = result.text_embedding?.[0]?.embedding;
+    return Array.isArray(embedding) ? embedding : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function findRelatedFeedbackByVector(params: {
+  queryVector: number[];
+  teamId?: string;
+  excludeId?: string;
+  size?: number;
+}) {
+  const { queryVector, teamId, excludeId, size = 6 } = params;
+
+  if (!Array.isArray(queryVector) || queryVector.length === 0) {
+    return [];
+  }
+
+  const filterQuery: any = {
+    bool: {
+      filter: [] as any[],
+      must_not: [] as any[],
+    },
+  };
+  if (teamId) {
+    filterQuery.bool.filter.push({ term: { teamId } });
+  }
+  if (excludeId) {
+    filterQuery.bool.must_not.push({ ids: { values: [excludeId] } });
+  }
+  const hasFilter =
+    filterQuery.bool.filter.length > 0 || filterQuery.bool.must_not.length > 0;
+
+  const result = await esClient.search({
+    index: feedbackIndex,
+    knn: {
+      field: "embedding",
+      query_vector: queryVector,
+      k: size,
+      num_candidates: Math.max(size * 12, 60),
+      ...(hasFilter ? { filter: filterQuery } : {}),
+    },
+    _source: {
+      excludes: ["embedding"],
+    },
+  });
+
+  return result.hits.hits.map((hit) => {
+    const source = (hit._source as any) || {};
+    return {
+      id: hit._id,
+      description: source.description || "",
+      sentiment: source.sentiment || "neutral",
+      rate: source.rate ?? null,
+      createdAt: source.createdAt || null,
+      teamId: source.teamId || null,
+      score: hit._score ?? null,
+      source,
+    };
+  });
+}
+
+export async function runElasticCompletion(input: string) {
+  const text = String(input || "").trim();
+  if (!text) return "";
+
+  try {
+    const result = await esClient.inference.completion({
+      inference_id: completionEndpointId,
+      input: text,
+      timeout: "20s",
+    });
+    return result.completion?.[0]?.result?.trim() || "";
+  } catch (error) {
+    return "";
   }
 }

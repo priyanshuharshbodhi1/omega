@@ -1,6 +1,10 @@
+---
+trigger: always_on
+---
+
 # Antigravity Workspace Rules
 
-Project: Zapfeed / Elastic Agent Implementation
+Project: Omega / Elastic Agent Implementation
 
 ---
 

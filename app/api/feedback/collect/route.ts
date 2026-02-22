@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { createFeedback } from "@/lib/elasticsearch";
-import { getChatModel, getEmbeddings } from "@/lib/llm";
+import { createFeedback, runElasticCompletion } from "@/lib/elasticsearch";
+import { getChatModel } from "@/lib/llm";
 import { SENTIMENT_CLASSIFY, FEEDBACK_AI_RESPONSE } from "@/prompts";
 
 // Prompts are now centralized in @/prompts/index.ts
@@ -10,28 +10,36 @@ export async function POST(req: Request) {
   const body = await req.json();
 
   try {
-    // Classify Text using Fallback Model
     const promptClassify = ChatPromptTemplate.fromTemplate(SENTIMENT_CLASSIFY);
     const formattedPromptClassify = await promptClassify.format({
       input: body.text,
     });
-    const modelClassify = getChatModel(0.2);
-    const textClassify = await modelClassify.invoke(formattedPromptClassify);
-
-    // aiResponse feedback using Fallback Model
     const promptResponse =
       ChatPromptTemplate.fromTemplate(FEEDBACK_AI_RESPONSE);
     const formattedPromptResponse = await promptResponse.format({
       input: body.text,
     });
-    const modelResponse = getChatModel(0.7);
-    const textResponse = await modelResponse.invoke(formattedPromptResponse);
 
-    // Handle Optional Embeddings
-    const vectorData = await getEmbeddings(body.text);
+    // Elastic-first path: run both inference requests in parallel.
+    let [sentimentRaw, aiResponseRaw] = await Promise.all([
+      runElasticCompletion(formattedPromptClassify),
+      runElasticCompletion(formattedPromptResponse),
+    ]);
+
+    // Fallback model if completion endpoint is unavailable.
+    if (!sentimentRaw || !aiResponseRaw) {
+      const modelClassify = getChatModel(0.2);
+      const modelResponse = getChatModel(0.7);
+      const [textClassify, textResponse] = await Promise.all([
+        modelClassify.invoke(formattedPromptClassify),
+        modelResponse.invoke(formattedPromptResponse),
+      ]);
+      sentimentRaw = String(textClassify.content || "");
+      aiResponseRaw = String(textResponse.content || "");
+    }
 
     // Sanitize sentiment extraction
-    let sentiment = (textClassify.content as string).toLowerCase().trim();
+    let sentiment = sentimentRaw.toLowerCase().trim();
     if (sentiment.includes("positive")) sentiment = "positive";
     else if (sentiment.includes("negative")) sentiment = "negative";
     else if (sentiment.includes("neutral")) sentiment = "neutral";
@@ -42,17 +50,13 @@ export async function POST(req: Request) {
       teamId: body.teamId,
       rate: body.rate,
       description: body.text,
-      aiResponse: (textResponse.content as string).trim(),
+      aiResponse: aiResponseRaw.trim(),
       sentiment: sentiment,
       isResolved: false,
       customerName: body.customerName || null,
       customerEmail: body.customerEmail || null,
       customerPhone: body.customerPhone || null,
     };
-
-    if (vectorData && vectorData[0]) {
-      feedbackData.embedding = vectorData[0];
-    }
 
     const feedbackStored = await createFeedback(feedbackData);
 
@@ -106,20 +110,6 @@ export async function POST(req: Request) {
         }
       }
     });
-    */
-
-    /* OLD EMBEDDING CREATION (Relied on SQL raw update)
-    const embeddedDocument = await prisma.embeddedDocument.create({
-      data: {
-        teamId: body.teamId,
-        content: texts[0],
-        metadata: { type: "feedback", sentiment: (textClassify.content as String).trim(), feedbackId: feedbackStored.id, teamId: body.teamId },
-      },
-    });
-
-    await prisma.$executeRawUnsafe(
-      `UPDATE EmbeddedDocument SET embedding = '[${vectorData}]' WHERE id = '${embeddedDocument.id}'`
-    );
     */
 
     return NextResponse.json(

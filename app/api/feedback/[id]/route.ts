@@ -1,7 +1,10 @@
 import { auth } from "@/auth";
-import { OpenAIEmbeddings } from "@langchain/openai";
 import { NextResponse } from "next/server";
-import { esClient } from "@/lib/elasticsearch";
+import {
+  esClient,
+  findRelatedFeedbackByVector,
+  getElasticTextEmbedding,
+} from "@/lib/elasticsearch";
 
 export async function GET(
   req: Request,
@@ -26,55 +29,72 @@ export async function GET(
   */
 
   try {
-    // New: Get Feedback from Elasticsearch
     const fbResult = await esClient.get({
       index: "feedback",
       id: id,
     });
     const feedback = { id: fbResult._id, ...(fbResult._source as any) };
 
-    // New: Use Elasticsearch kNN search for related feedbacks
-    // The 'embedding' field is already stored in the document
     let relateds: any[] = [];
+    let queryVector: number[] | null = null;
 
-    if (feedback.embedding && feedback.embedding.length > 0) {
-      const relatedResult = await esClient.search({
+    if (Array.isArray(feedback.embedding) && feedback.embedding.length > 0) {
+      queryVector = feedback.embedding;
+    } else if (feedback.description) {
+      queryVector = await getElasticTextEmbedding(feedback.description);
+    }
+
+    if (queryVector) {
+      relateds = await findRelatedFeedbackByVector({
+        queryVector,
+        teamId: feedback.teamId,
+        excludeId: id,
+        size: 6,
+      });
+    }
+
+    // Fallback when vector similarity is unavailable.
+    if (relateds.length === 0 && feedback.description) {
+      const mustQueries: any[] = [
+        {
+          more_like_this: {
+            fields: ["description"],
+            like: feedback.description,
+            min_term_freq: 1,
+            max_query_terms: 25,
+          },
+        },
+      ];
+
+      if (feedback.teamId) {
+        mustQueries.push({ term: { teamId: feedback.teamId } });
+      }
+
+      const relatedFallback = await esClient.search({
         index: "feedback",
-        knn: {
-          field: "embedding",
-          query_vector: feedback.embedding,
-          k: 6,
-          num_candidates: 100,
-          filter: {
-            bool: {
-              must_not: { term: { _id: id } }, // Exclude current feedback
-            },
+        size: 6,
+        query: {
+          bool: {
+            must: mustQueries,
+            must_not: [{ ids: { values: [id] } }],
           },
         },
         _source: {
-          excludes: ["embedding"], // Don't return the huge vector
+          excludes: ["embedding"],
         },
       });
 
-      relateds = relatedResult.hits.hits.map((hit) => ({
+      relateds = relatedFallback.hits.hits.map((hit) => ({
         id: hit._id,
-        content: (hit._source as any).description,
-        metadata: hit._source,
-        distance: hit._score, // Use score as a proxy for distance
+        description: (hit._source as any).description,
+        sentiment: (hit._source as any).sentiment || "neutral",
+        rate: (hit._source as any).rate ?? null,
+        createdAt: (hit._source as any).createdAt || null,
+        teamId: (hit._source as any).teamId || null,
+        score: hit._score ?? null,
+        source: hit._source,
       }));
     }
-
-    /* OLD VECTOR SEARCH
-    const embeddings = new OpenAIEmbeddings({
-      model: "text-embedding-3-small",
-      dimensions: 1536,
-    });
-    const vectorData = await embeddings.embedDocuments([feedback?.description!]);
-
-    const relateds = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT id, content, metadata, vec_cosine_distance(embedding, '[${vectorData}]') AS distance FROM EmbeddedDocument ORDER BY distance LIMIT 6`
-    );
-    */
 
     return NextResponse.json(
       {

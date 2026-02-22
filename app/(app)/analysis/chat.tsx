@@ -15,6 +15,7 @@ export default function Chat({ session }: { session: Session | null }) {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -42,10 +43,16 @@ export default function Chat({ session }: { session: Session | null }) {
           messages: [...messages, userMessage],
           team: team,
           session: session,
+          conversationId,
         }),
       });
 
       if (!response.ok) throw new Error("Failed to fetch response");
+
+      const nextConversationId = response.headers.get("x-agent-conversation-id");
+      if (nextConversationId) {
+        setConversationId(nextConversationId);
+      }
 
       const text = await response.text();
       const aiMessage = {
