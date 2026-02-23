@@ -1,0 +1,140 @@
+# Zapfeed Pivot Architecture Arc Diagram (Feedback + Customer Agent)
+
+```mermaid
+flowchart LR
+  subgraph Admin[Admin App]
+    W[Widget Settings\nmode + style + source indexing]
+    D[Dashboard\nstats + live issue clusters]
+    A[Analysis Chat\nagent insights]
+  end
+
+  subgraph Client[Embedded Client Widget]
+    JS[omega.js snippet\nmode-aware embed]
+    CFB[Feedback Form Mode]
+    CAG[Customer Agent Mode\nwith citations]
+  end
+
+  subgraph API[Next.js API Layer]
+    TStyle[/POST /api/team/style/]
+    SIdx[/POST /api/support/index-source/]
+    SChat[/POST /api/support/chat/]
+    FCollect[/POST /api/feedback/collect/]
+    ClRun[/POST /api/team/:id/issue-clusters/recluster/]
+    ClGet[/GET /api/team/:id/issue-clusters/]
+    ClVerify[/POST /api/issue-clusters/:id/verify/]
+    ClSlack[/POST /api/issue-clusters/:id/slack/]
+    ClGitHub[/POST /api/issue-clusters/:id/github/]
+  end
+
+  subgraph AgentBuilder[Elastic Agent Builder]
+    G1[zapfeed_insights_agent_v1]
+    G2[zapfeed_exec_brief_agent_v1]
+    G3[zapfeed_support_triage_agent_v1]
+    G4[zapfeed_customer_support_agent_v1]
+
+    T1[zapfeed_feedback_sentiment_trends_v1]
+    T2[zapfeed_feedback_low_rating_examples_v1]
+    T3[zapfeed_feedback_resolution_snapshot_v1]
+    T4[zapfeed_feedback_issue_buckets_v1]
+    T5[zapfeed_feedback_urgent_queue_v1]
+    T6[zapfeed_issue_clusters_snapshot_v1]
+    T7[platform.core.generate_esql]
+    T8[platform.core.execute_esql]
+  end
+
+  subgraph ES[Elasticsearch]
+    I1[(feedback)]
+    I2[(teams)]
+    I3[(support_docs)]
+    I4[(support_conversations)]
+    I5[(issue_clusters)]
+    I6[(action_audit_log)]
+    E1[Inference: text_embedding]
+    E2[Inference: completion]
+  end
+
+  subgraph External[External Integrations]
+    SL[Slack Webhook]
+    GH[GitHub Issues API]
+  end
+
+  W --> TStyle
+  W --> SIdx
+  D --> ClRun
+  D --> ClGet
+  D --> ClVerify
+  D --> ClSlack
+  D --> ClGitHub
+  A -->|/api/chat| G1
+  A -->|intent route| G2
+  A -->|intent route| G3
+
+  JS --> CFB
+  JS --> CAG
+  CFB --> FCollect
+  CAG --> SChat
+
+  SIdx --> I3
+  SIdx --> E1
+  FCollect --> I1
+  FCollect --> E2
+
+  SChat --> I3
+  SChat --> I4
+  SChat --> G4
+
+  ClRun --> I1
+  ClRun --> I4
+  ClRun --> I5
+  ClGet --> I5
+
+  ClVerify --> I5
+  ClVerify --> I6
+  ClSlack --> I6
+  ClSlack --> SL
+  ClGitHub --> I6
+  ClGitHub --> GH
+
+  G1 --> T1
+  G1 --> T2
+  G1 --> T3
+  G1 --> T4
+  G1 --> T5
+  G1 --> T6
+  G1 --> T7
+  G1 --> T8
+
+  G2 --> T1
+  G2 --> T3
+  G2 --> T4
+  G2 --> T6
+  G2 --> T7
+  G2 --> T8
+
+  G3 --> T2
+  G3 --> T5
+  G3 --> T6
+  G3 --> T7
+  G3 --> T8
+
+  G4 --> T7
+  G4 --> T8
+
+  T1 --> I1
+  T2 --> I1
+  T3 --> I1
+  T4 --> I1
+  T5 --> I1
+  T6 --> I5
+  T7 --> I1
+  T7 --> I5
+  T8 --> I1
+  T8 --> I5
+```
+
+## Pivot Highlights
+- Backward compatible: feedback flow remains intact.
+- New dual-mode widget: `feedback` or `customer_agent`.
+- Customer agent answers with citations from indexed support docs.
+- Live clustered issue candidates from both feedback and support conversations.
+- Human-in-loop workflow: verify -> Slack/GitHub actions with audit logging.

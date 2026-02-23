@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import { runESQL } from "@/lib/elasticsearch";
+import { esClient, runESQL } from "@/lib/elasticsearch";
 
 export async function GET(
   req: Request,
@@ -76,9 +76,55 @@ export async function GET(
     | STATS count = COUNT(*) BY sentiment
   `;
 
+  const supportConversationsIndex =
+    process.env.ELASTIC_SUPPORT_CONVERSATIONS_INDEX || "support_conversations";
+  const supportDocsIndex = process.env.ELASTIC_SUPPORT_DOCS_INDEX || "support_docs";
+  const supportTicketsIndex =
+    process.env.ELASTIC_SUPPORT_TICKETS_INDEX || "support_tickets";
+
   try {
-    const statsResult = await runESQL(esqlQuery);
-    const sentimentResult = await runESQL(sentimentEsql);
+    const [statsResult, sentimentResult, support7d, docsSources, ticketsOpen] =
+      await Promise.all([
+        runESQL(esqlQuery),
+        runESQL(sentimentEsql),
+        esClient.search({
+          index: supportConversationsIndex,
+          size: 0,
+          query: {
+            bool: {
+              filter: [
+                { term: { teamId } },
+                { range: { createdAt: { gte: "now-7d/d" } } },
+              ],
+            },
+          },
+          aggs: {
+            sessions: { cardinality: { field: "sessionId" } },
+            user_messages: {
+              filter: {
+                term: { role: "user" },
+              },
+            },
+          },
+        }),
+        esClient.search({
+          index: supportDocsIndex,
+          size: 0,
+          query: { term: { teamId } },
+          aggs: {
+            sources: { cardinality: { field: "sourceId" } },
+          },
+        }),
+        esClient.search({
+          index: supportTicketsIndex,
+          size: 0,
+          query: {
+            bool: {
+              filter: [{ term: { teamId } }, { term: { status: "open" } }],
+            },
+          },
+        }).catch(() => ({ hits: { total: { value: 0 } } } as any)),
+      ]);
 
     const stats = statsResult.values?.[0] || [0, 0, 0, null];
     const total = Number(stats[0]);
@@ -101,6 +147,12 @@ export async function GET(
       resolved: Number(stats[2]),
       ratingAverage: stats[3] !== null ? Number(stats[3]) : null,
       sentiment: sentimentData,
+      supportSessions7d: Number((support7d.aggregations as any)?.sessions?.value || 0),
+      supportMessages7d: Number(
+        (support7d.aggregations as any)?.user_messages?.doc_count || 0,
+      ),
+      knowledgeSources: Number((docsSources.aggregations as any)?.sources?.value || 0),
+      openSupportTickets: Number((ticketsOpen as any)?.hits?.total?.value || 0),
     };
 
     return NextResponse.json({

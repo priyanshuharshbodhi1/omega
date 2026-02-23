@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BotMessageSquare, Grid2X2, Home, LayoutDashboard, Link2, MessageSquareDashed, Palette, Users2 } from "lucide-react";
+import { BotMessageSquare, LayoutDashboard, Link2, LifeBuoy, MessageSquareDashed, Palette } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import LogoMark from "@/components/ui/logo/logo-mark";
@@ -100,6 +100,17 @@ export default function Sidenav({ session }: { session: any }) {
             >
               <Link2 className="w-4 h-4" />
               <span>Integration</span>
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/support-requests"
+              className={`w-full text-sm text-[#FFFDF7] flex items-center space-x-2 px-4 py-3 rounded-md ${
+                pathname === "/support-requests" ? "bg-[#D2F7D7] text-[#1F1A15]" : "text-[#CBBEAE] hover:text-[#FFFDF7]"
+              }`}
+            >
+              <LifeBuoy className="w-4 h-4" />
+              <span>Support Inbox</span>
             </Link>
           </li>
         </ul>

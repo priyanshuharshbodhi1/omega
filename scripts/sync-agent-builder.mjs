@@ -12,6 +12,8 @@ const execAgentId =
   process.env.ELASTIC_EXEC_AGENT_ID || "zapfeed_exec_brief_agent_v1";
 const triageAgentId =
   process.env.ELASTIC_TRIAGE_AGENT_ID || "zapfeed_support_triage_agent_v1";
+const customerSupportAgentId =
+  process.env.ELASTIC_CUSTOMER_AGENT_ID || "zapfeed_customer_support_agent_v1";
 
 const tools = [
   {
@@ -173,6 +175,31 @@ FROM feedback
       },
     },
   },
+  {
+    id: "zapfeed_issue_clusters_snapshot_v1",
+    type: "esql",
+    description:
+      "Returns top issue clusters detected from feedback and support conversations for a team.",
+    tags: ["zapfeed", "ops", "clusters"],
+    configuration: {
+      query: `
+FROM issue_clusters
+| WHERE teamId == ?teamId
+| SORT count DESC, lastSeenAt DESC
+| LIMIT ?limit
+      `.trim(),
+      params: {
+        teamId: {
+          type: "string",
+          description: "Team identifier to scope results",
+        },
+        limit: {
+          type: "integer",
+          description: "Maximum rows to return",
+        },
+      },
+    },
+  },
 ];
 
 const sharedTools = [
@@ -181,6 +208,7 @@ const sharedTools = [
   "zapfeed_feedback_resolution_snapshot_v1",
   "zapfeed_feedback_issue_buckets_v1",
   "zapfeed_feedback_urgent_queue_v1",
+  "zapfeed_issue_clusters_snapshot_v1",
   "platform.core.generate_esql",
   "platform.core.execute_esql",
 ];
@@ -272,6 +300,29 @@ Output format:
 - Urgent items table (id, date, rating/sentiment, risk)
 - Triage actions for next 24h and next 7d
 - Blockers/unknowns
+      `.trim(),
+      tools: [{ tool_ids: sharedTools }],
+    },
+  },
+  {
+    id: customerSupportAgentId,
+    name: "Zapfeed Customer Support Agent",
+    description:
+      "Answers end-user support questions using retrieved docs and always cites sources.",
+    labels: ["zapfeed", "support", "customer-facing"],
+    avatar_color: "#DDE8FF",
+    avatar_symbol: "CS",
+    configuration: {
+      instructions: `
+You are Zapfeed's customer support assistant.
+You answer customer questions using only the sources provided in the prompt context.
+
+Rules:
+1. Keep responses concise and support-oriented.
+2. Cite factual claims using [1], [2], [3] style references.
+3. If the provided sources do not contain the answer, say so clearly.
+4. Do not invent product policies, pricing, or guarantees.
+5. When relevant, include one short next step for the customer.
       `.trim(),
       tools: [{ tool_ids: sharedTools }],
     },

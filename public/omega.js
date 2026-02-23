@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", function () {
   var omegaBtnOpen;
   var omegaScript = document.querySelector("script[omega-id]");
   var omegaId = omegaScript.getAttribute("omega-id") || "";
+  var overrideMode = omegaScript.getAttribute("omega-mode") || "";
   var url = omegaScript.src.split("/omega.js")[0] || "";
   var appUrl = url;
 
@@ -14,6 +15,11 @@ document.addEventListener("DOMContentLoaded", function () {
       .then((res) => {
         if (res?.success) {
           var dataTeam = res?.data;
+          var widgetMode = overrideMode || dataTeam?.style?.widget_mode || "feedback";
+          var collectPath =
+            widgetMode === "customer_agent"
+              ? `${appUrl}/collect/${omegaId}?mode=customer_agent`
+              : `${appUrl}/collect/${omegaId}?mode=feedback`;
           var css = document.createElement("link");
           css.href = `${url}/omega.css`;
           css.type = "text/css";
@@ -28,7 +34,7 @@ document.addEventListener("DOMContentLoaded", function () {
           </a>
 
           <div id="omega-frame" class="omega-frame-closed" style="display:none;">
-              <iframe allowfullscreen="true" class="omega-frame-embed" title="Omega" role="dialog" src="${appUrl}/collect/${omegaId}"></iframe>
+              <iframe allowfullscreen="true" class="omega-frame-embed" title="Omega" role="dialog" src="${collectPath}"></iframe>
           </div>`,
           );
 

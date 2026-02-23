@@ -45,6 +45,10 @@ export async function POST(req: Request) {
         form_rate_text: "Rate your overall experience",
         form_details_text: "Add more details",
         form_button_text: "Send Feedback",
+        widget_mode: "feedback",
+        support_title: "Arya Support Assistant",
+        support_subtitle: "Get instant help with citations",
+        support_placeholder: "Ask a question about docs, setup, billing...",
       },
     });
 

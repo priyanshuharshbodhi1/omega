@@ -66,23 +66,42 @@ export async function GET(req: Request) {
       query.bool.must.push({ term: { sentiment: sentiment } });
     }
 
-    const result = await esClient.search({
-      index: "feedback",
-      query: query,
-      sort: [{ createdAt: "desc" }],
-      size: 40,
-      _source: ["description"],
+    const [feedbackResult, supportResult] = await Promise.all([
+      esClient.search({
+        index: "feedback",
+        query: query,
+        sort: [{ createdAt: "desc" }],
+        size: 40,
+        _source: ["description", "createdAt", "sentiment"],
+      }),
+      esClient.search({
+        index:
+          process.env.ELASTIC_SUPPORT_CONVERSATIONS_INDEX || "support_conversations",
+        query: {
+          bool: {
+            filter: [{ term: { teamId } }, { term: { role: "user" } }],
+          },
+        },
+        sort: [{ createdAt: "desc" }],
+        size: 30,
+        _source: ["message", "createdAt"],
+      }),
+    ]);
+
+    const feedbacks = feedbackResult.hits.hits.map((hit: any) => {
+      const source = hit._source || {};
+      return `- [feedback ${String(source.createdAt || "").split("T")[0] || "N/A"}] (${source.sentiment || "neutral"}) ${source.description}`;
+    });
+    const supportMessages = supportResult.hits.hits.map((hit: any) => {
+      const source = hit._source || {};
+      return `- [support ${String(source.createdAt || "").split("T")[0] || "N/A"}] ${source.message}`;
     });
 
-    const feedbacks = result.hits.hits.map(
-      (hit: any) => "- " + hit._source.description,
-    );
-
-    if (feedbacks.length === 0) {
+    if (feedbacks.length === 0 && supportMessages.length === 0) {
       return NextResponse.json({
         success: true,
-        message: "No feedback found",
-        data: "No feedback available to summarize.",
+        message: "No data found",
+        data: "No feedback or support-chat data available to summarize.",
       });
     }
 
@@ -104,7 +123,10 @@ export async function GET(req: Request) {
       if (mode === "deep") {
         const response = await invokeAgent({
           agentId,
-          message: strategicInstructions,
+          message: `${strategicInstructions}
+
+Recent support chat evidence:
+${supportMessages.join("\n") || "- none"}`,
         });
         const message =
           (response as any)?.response?.message ||
@@ -117,7 +139,18 @@ export async function GET(req: Request) {
         });
       }
 
-      const res = await runElasticCompletion(strategicInstructions);
+      const res = await runElasticCompletion(
+        `${strategicInstructions}
+
+Also include these support chat issues:
+${supportMessages.join("\n") || "- none"}
+
+Output as:
+## Executive Summary
+## Key Problems
+## Recommended Actions
+## Risks / Missing Data`,
+      );
 
       return NextResponse.json({
         success: true,
@@ -127,7 +160,12 @@ export async function GET(req: Request) {
     } catch (error) {
       console.error("Omega Agent Error:", error);
       const res = await runElasticCompletion(
-        `Summarize these customer feedbacks for business: ${feedbacks.join("\n")}`,
+        `Summarize these customer insights for business:
+Feedback:
+${feedbacks.join("\n")}
+
+Support chat:
+${supportMessages.join("\n")}`,
       );
       return NextResponse.json({
         success: true,

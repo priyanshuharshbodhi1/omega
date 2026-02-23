@@ -11,6 +11,7 @@
     "setup:elastic-feedback": "node scripts/setup-elastic-feedback.mjs",
     "sync:agent-builder": "node scripts/sync-agent-builder.mjs",
     "eval:agent-chat": "node scripts/eval-agent-chat.mjs",
+    "recluster:issues": "node scripts/recluster-issues.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     "moment": "^2.30.1",
     "next": "14.2.5",
     "next-auth": "^5.0.0-beta.20",
+    "pdf-parse": "^1.1.1",
     "react": "^18",
     "react-color": "^2.19.3",
     "react-dom": "^18",

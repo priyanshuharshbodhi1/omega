@@ -141,6 +141,7 @@ async function createIndices() {
             description: { type: "text" },
             style: { type: "object", enabled: false },
             createdAt: { type: "date" },
+            updatedAt: { type: "date" },
           },
         },
       },
@@ -178,6 +179,167 @@ async function createIndices() {
       console.log('ℹ️ Index "users" already exists.');
     } else {
       console.error("❌ Error creating users index:", e.meta?.body || e);
+    }
+  }
+
+  // 5. Support Knowledge Index
+  try {
+    await client.indices.create({
+      index: process.env.ELASTIC_SUPPORT_DOCS_INDEX || "support_docs",
+      body: {
+        mappings: {
+          properties: {
+            id: { type: "keyword" },
+            teamId: { type: "keyword" },
+            sourceId: { type: "keyword" },
+            sourceType: { type: "keyword" },
+            title: { type: "text" },
+            url: { type: "keyword" },
+            content: { type: "text" },
+            contentSnippet: { type: "text" },
+            chunk: { type: "integer" },
+            createdAt: { type: "date" },
+            updatedAt: { type: "date" },
+            embedding: {
+              type: "dense_vector",
+              dims: embeddingDims,
+              index: true,
+              similarity: "cosine",
+            },
+          },
+        },
+      },
+    });
+    console.log("✅ Created index: support_docs");
+  } catch (e: any) {
+    if (e.meta?.body?.error?.type === "resource_already_exists_exception") {
+      console.log('ℹ️ Index "support_docs" already exists.');
+    } else {
+      console.error("❌ Error creating support_docs index:", e.meta?.body || e);
+    }
+  }
+
+  // 6. Support Conversations Index
+  try {
+    await client.indices.create({
+      index:
+        process.env.ELASTIC_SUPPORT_CONVERSATIONS_INDEX || "support_conversations",
+      body: {
+        mappings: {
+          properties: {
+            id: { type: "keyword" },
+            teamId: { type: "keyword" },
+            sessionId: { type: "keyword" },
+            role: { type: "keyword" },
+            message: { type: "text" },
+            sourceRefs: { type: "object", enabled: false },
+            createdAt: { type: "date" },
+          },
+        },
+      },
+    });
+    console.log("✅ Created index: support_conversations");
+  } catch (e: any) {
+    if (e.meta?.body?.error?.type === "resource_already_exists_exception") {
+      console.log('ℹ️ Index "support_conversations" already exists.');
+    } else {
+      console.error(
+        "❌ Error creating support_conversations index:",
+        e.meta?.body || e,
+      );
+    }
+  }
+
+  // 7. Issue Clusters Index
+  try {
+    await client.indices.create({
+      index: process.env.ELASTIC_ISSUE_CLUSTERS_INDEX || "issue_clusters",
+      body: {
+        mappings: {
+          properties: {
+            id: { type: "keyword" },
+            teamId: { type: "keyword" },
+            clusterKey: { type: "keyword" },
+            title: { type: "text" },
+            count: { type: "integer" },
+            sampleMessages: { type: "text" },
+            status: { type: "keyword" },
+            lastSeenAt: { type: "date" },
+            updatedAt: { type: "date" },
+          },
+        },
+      },
+    });
+    console.log("✅ Created index: issue_clusters");
+  } catch (e: any) {
+    if (e.meta?.body?.error?.type === "resource_already_exists_exception") {
+      console.log('ℹ️ Index "issue_clusters" already exists.');
+    } else {
+      console.error("❌ Error creating issue_clusters index:", e.meta?.body || e);
+    }
+  }
+
+  // 9. Support Tickets Index
+  try {
+    await client.indices.create({
+      index: process.env.ELASTIC_SUPPORT_TICKETS_INDEX || "support_tickets",
+      body: {
+        mappings: {
+          properties: {
+            id: { type: "keyword" },
+            teamId: { type: "keyword" },
+            source: { type: "keyword" },
+            sessionId: { type: "keyword" },
+            language: { type: "keyword" },
+            customerName: { type: "text" },
+            customerEmail: { type: "keyword" },
+            customerPhone: { type: "keyword" },
+            subject: { type: "text" },
+            description: { type: "text" },
+            attachmentName: { type: "keyword" },
+            attachmentContentType: { type: "keyword" },
+            attachmentDataUrl: { type: "keyword", index: false },
+            status: { type: "keyword" },
+            createdAt: { type: "date" },
+            updatedAt: { type: "date" },
+          },
+        },
+      },
+    });
+    console.log("✅ Created index: support_tickets");
+  } catch (e: any) {
+    if (e.meta?.body?.error?.type === "resource_already_exists_exception") {
+      console.log('ℹ️ Index "support_tickets" already exists.');
+    } else {
+      console.error("❌ Error creating support_tickets index:", e.meta?.body || e);
+    }
+  }
+
+  // 8. Action Audit Log Index
+  try {
+    await client.indices.create({
+      index: process.env.ELASTIC_ACTION_AUDIT_INDEX || "action_audit_log",
+      body: {
+        mappings: {
+          properties: {
+            id: { type: "keyword" },
+            teamId: { type: "keyword" },
+            clusterId: { type: "keyword" },
+            action: { type: "keyword" },
+            status: { type: "keyword" },
+            detail: { type: "text" },
+            actorEmail: { type: "keyword" },
+            createdAt: { type: "date" },
+          },
+        },
+      },
+    });
+    console.log("✅ Created index: action_audit_log");
+  } catch (e: any) {
+    if (e.meta?.body?.error?.type === "resource_already_exists_exception") {
+      console.log('ℹ️ Index "action_audit_log" already exists.');
+    } else {
+      console.error("❌ Error creating action_audit_log index:", e.meta?.body || e);
     }
   }
 

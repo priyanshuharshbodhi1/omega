@@ -119,8 +119,23 @@ export default function Chat({ session }: { session: Session | null }) {
               AI Analysis
             </div>
             <h2 className="font-medium text-xl mb-6 text-[#1F1A15]">
-              Ask me about your feedback
+              Ask fast questions across feedback + support chat
             </h2>
+            <div className="flex flex-wrap justify-center gap-2">
+              {[
+                "Top customer pain points this week?",
+                "What support issues are trending?",
+                "What should I prioritize for product fixes?",
+              ].map((q) => (
+                <button
+                  key={q}
+                  className="text-xs rounded-full border border-[#D2C4B3] px-3 py-1.5 bg-white hover:bg-[#E6D8C6]"
+                  onClick={() => setInput(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
