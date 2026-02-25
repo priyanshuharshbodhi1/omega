@@ -215,7 +215,7 @@ export default function Dashboard() {
           </h3>
           <InfoTip text="Live support health from chat usage, indexed knowledge coverage, and escalated tickets." />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
             <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
               Sessions (7d)
@@ -246,6 +246,30 @@ export default function Dashboard() {
             </div>
             <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
               {stats?.openSupportTickets || 0}
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+              Resolution Rate (7d)
+            </div>
+            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+              {Number(stats?.resolutionRate7d || 0).toFixed(1)}%
+            </div>
+            <div className="text-[10px] text-[#6B5E50] mt-1">
+              {stats?.resolvedWithoutEscalation7d || 0}/{stats?.supportSessions7d || 0} resolved
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+              Bot CSAT (7d)
+            </div>
+            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+              {stats?.botCsatPositiveRate7d === null
+                ? "--"
+                : `${Number(stats.botCsatPositiveRate7d).toFixed(1)}%`}
+            </div>
+            <div className="text-[10px] text-[#6B5E50] mt-1">
+              {stats?.botCsatResponses7d || 0} ratings
             </div>
           </div>
         </div>

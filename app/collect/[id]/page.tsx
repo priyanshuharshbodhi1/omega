@@ -1,7 +1,16 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Globe2, Loader, SendHorizontal, Settings2, XIcon, MessageSquare } from "lucide-react";
+import {
+  Globe2,
+  Loader,
+  SendHorizontal,
+  Settings2,
+  XIcon,
+  MessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+} from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Transition } from "@headlessui/react";
@@ -22,9 +31,14 @@ type SupportMessage = {
   content: string;
   citations?: Citation[];
   supportContactUrl?: string | null;
+  assistantMessageId?: string | null;
+  confidenceScore?: number | null;
+  followUpQuestions?: string[];
+  csatRating?: "up" | "down" | null;
 };
 
 const ARYA_LANGUAGES = [
+  { value: "auto", label: "Auto-detect" },
   { value: "en", label: "English" },
   { value: "es", label: "Spanish" },
   { value: "fr", label: "French" },
@@ -211,22 +225,27 @@ function SupportWidget({ team }: { team: any }) {
     },
   ]);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState("auto");
+  const [detectedLang, setDetectedLang] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [csatLoadingMessageId, setCsatLoadingMessageId] = useState<string | null>(null);
   const [sessionId] = useState(
     () => `widget-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
+  const teamId = String(params?.id || "");
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const handleSend = async (presetQuestion?: string) => {
+    const questionToSend = String(presetQuestion ?? input).trim();
+    if (!questionToSend || loading) return;
 
     const nextUserMessage: SupportMessage = {
       id: `${Date.now()}`,
       role: "user",
-      content: input.trim(),
+      content: questionToSend,
     };
-    const question = input.trim();
-    setInput("");
+    if (!presetQuestion) {
+      setInput("");
+    }
     setMessages((prev) => [...prev, nextUserMessage]);
     setLoading(true);
 
@@ -235,8 +254,8 @@ function SupportWidget({ team }: { team: any }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          teamId: params.id,
-          message: question,
+          teamId,
+          message: questionToSend,
           sessionId,
           conversationId,
           language,
@@ -251,12 +270,24 @@ function SupportWidget({ team }: { team: any }) {
       if (result?.data?.conversationId) {
         setConversationId(result.data.conversationId);
       }
+      if (result?.data?.detectedLanguage) {
+        setDetectedLang(result.data.detectedLanguage);
+      }
 
       const assistantMessage: SupportMessage = {
         id: `${Date.now()}-assistant`,
         role: "assistant",
         content: String(result?.data?.reply || ""),
+        assistantMessageId: result?.data?.assistantMessageId || null,
         citations: Array.isArray(result?.data?.citations) ? result.data.citations : [],
+        confidenceScore:
+          typeof result?.data?.confidenceScore === "number"
+            ? result.data.confidenceScore
+            : null,
+        followUpQuestions: Array.isArray(result?.data?.followUpQuestions)
+          ? result.data.followUpQuestions.slice(0, 3)
+          : [],
+        csatRating: null,
       };
       const escalation = result?.data?.escalation;
       const nextMessages = [assistantMessage];
@@ -284,6 +315,52 @@ function SupportWidget({ team }: { team: any }) {
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const submitCsatRating = async (assistantMessageId: string, rating: "up" | "down") => {
+    if (!assistantMessageId || csatLoadingMessageId) return;
+    setCsatLoadingMessageId(assistantMessageId);
+
+    const previous = messages.find(
+      (msg) => msg.assistantMessageId === assistantMessageId,
+    )?.csatRating;
+
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.assistantMessageId === assistantMessageId
+          ? { ...msg, csatRating: rating }
+          : msg,
+      ),
+    );
+
+    try {
+      const response = await fetch("/api/support/csat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId,
+          sessionId,
+          assistantMessageId,
+          rating,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || "Failed to save rating.");
+      }
+      toast.success("Thanks for your feedback.");
+    } catch (error: any) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.assistantMessageId === assistantMessageId
+            ? { ...msg, csatRating: previous || null }
+            : msg,
+        ),
+      );
+      toast.error(error?.message || "Could not save your rating.");
+    } finally {
+      setCsatLoadingMessageId(null);
     }
   };
 
@@ -342,6 +419,11 @@ function SupportWidget({ team }: { team: any }) {
               </option>
             ))}
           </select>
+          {language === "auto" && detectedLang && detectedLang !== "en" && (
+            <p className="mt-1.5 text-[10px] text-[#6B5E50]">
+              Detected: {ARYA_LANGUAGES.find((l) => l.value === detectedLang)?.label || detectedLang}
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -447,6 +529,73 @@ function SupportWidget({ team }: { team: any }) {
                 </div>
               ) : null}
 
+              {message.role === "assistant" && typeof message.confidenceScore === "number" ? (
+                <div className="mt-2 pt-2 border-t border-[#E6D8C6]">
+                  <span className="inline-flex items-center rounded-full bg-[#E6D8C6] text-[#1F1A15] text-[10px] font-semibold px-2 py-1">
+                    Confidence: {Math.round(message.confidenceScore)}%
+                  </span>
+                </div>
+              ) : null}
+
+              {message.role === "assistant" &&
+              Array.isArray(message.followUpQuestions) &&
+              message.followUpQuestions.length > 0 ? (
+                <div className="mt-2 pt-2 border-t border-[#E6D8C6]">
+                  <p className="text-[10px] uppercase tracking-wide text-[#4B3F35] font-medium mb-1.5">
+                    Suggested follow-ups
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {message.followUpQuestions.map((question, idx) => (
+                      <button
+                        key={`${message.id}-follow-up-${idx}`}
+                        type="button"
+                        onClick={() => handleSend(question)}
+                        disabled={loading}
+                        className="rounded-full border border-[#D2C4B3] bg-[#FFFDF7] px-2.5 py-1 text-[11px] text-[#1F1A15] hover:bg-[#F5F0E8] disabled:opacity-60"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {message.role === "assistant" && message.assistantMessageId ? (
+                <div className="mt-2 pt-2 border-t border-[#E6D8C6] flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-[#4B3F35]">Was this helpful?</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => submitCsatRating(message.assistantMessageId!, "up")}
+                      disabled={csatLoadingMessageId === message.assistantMessageId}
+                      className={clsx(
+                        "rounded-full border p-1.5",
+                        message.csatRating === "up"
+                          ? "border-[#14532d] bg-[#D2F7D7] text-[#14532d]"
+                          : "border-[#D2C4B3] bg-white text-[#4B3F35]",
+                      )}
+                      title="Helpful"
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submitCsatRating(message.assistantMessageId!, "down")}
+                      disabled={csatLoadingMessageId === message.assistantMessageId}
+                      className={clsx(
+                        "rounded-full border p-1.5",
+                        message.csatRating === "down"
+                          ? "border-[#B42318] bg-[#F8E1D5] text-[#B42318]"
+                          : "border-[#D2C4B3] bg-white text-[#4B3F35]",
+                      )}
+                      title="Not helpful"
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {message.role === "assistant" && message.supportContactUrl ? (
                 <div className="mt-3">
                   <a
@@ -493,7 +642,11 @@ function SupportWidget({ team }: { team: any }) {
             "Ask Omega about docs, setup, billing..."
           }
         />
-        <Button type="button" onClick={handleSend} disabled={loading || !input.trim()}>
+        <Button
+          type="button"
+          onClick={() => handleSend()}
+          disabled={loading || !input.trim()}
+        >
           <SendHorizontal className="w-4 h-4" />
         </Button>
       </div>

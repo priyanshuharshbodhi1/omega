@@ -542,7 +542,8 @@ export default function Page() {
                   </div>
                   <div className="bg-[#FFFDF7] h-[210px] p-3">
                     <div className="rounded-xl px-3 py-2 text-sm bg-white border border-[#D2C4B3] text-[#1F1A15] max-w-[85%]">
-                      Hi! I'm here to help. Ask me anything and I'll find the answer for you.
+                      Hi! I&apos;m here to help. Ask me anything and I&apos;ll find the answer for
+                      you.
                     </div>
                   </div>
                   <div className="border-t border-[#D2C4B3] bg-white p-3 flex items-end gap-2">

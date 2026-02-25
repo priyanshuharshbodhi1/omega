@@ -12,6 +12,7 @@
     "sync:agent-builder": "node scripts/sync-agent-builder.mjs",
     "eval:agent-chat": "node scripts/eval-agent-chat.mjs",
     "recluster:issues": "node scripts/recluster-issues.mjs",
+    "cron:sentiment": "node scripts/sentiment-cron.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

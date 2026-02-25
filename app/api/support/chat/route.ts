@@ -25,6 +25,10 @@ function withTimeout<T>(
   });
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function buildSourceContext(
   citations: Array<{
     title: string;
@@ -39,6 +43,95 @@ function buildSourceContext(
       return `[Source ${idx + 1}] Title: ${item.title}\nContent: ${body}${item.url ? `\nURL: ${item.url}` : ""}`;
     })
     .join("\n\n---\n\n");
+}
+
+function computeAnswerConfidence(
+  citations: Array<{ score?: number | null }>,
+) {
+  if (!Array.isArray(citations) || citations.length === 0) return 0;
+
+  const top = citations.slice(0, 3);
+  const meanScore =
+    top.reduce((sum, item) => sum + Number(item.score || 0), 0) / top.length;
+
+  // RRF maximum when lexical + semantic both rank a doc at #1: 2 / (60 + 1)
+  const theoreticalMaxRrf = 2 / 61;
+  const normalizedRelevance = clamp(meanScore / theoreticalMaxRrf, 0, 1);
+  const sourceCoverage = clamp(citations.length / 3, 0, 1);
+  const blended = normalizedRelevance * 0.75 + sourceCoverage * 0.25;
+
+  return clamp(Math.round(blended * 100), 25, 99);
+}
+
+function parseFollowUpQuestions(raw: string) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+
+  const withoutFences = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(withoutFences);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => String(item || "").trim())
+        .filter((item) => item.length > 0)
+        .slice(0, 3);
+    }
+  } catch {
+    // Try line-based fallback below.
+  }
+
+  return withoutFences
+    .split("\n")
+    .map((line) => line.replace(/^[-*0-9.)\s]+/, "").trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 3);
+}
+
+async function generateFollowUpQuestions(params: {
+  question: string;
+  answer: string;
+  citations: Array<{ title: string; snippet: string }>;
+  outputLanguage: string;
+}) {
+  const sourceSummary = params.citations
+    .slice(0, 3)
+    .map((item, idx) => `[${idx + 1}] ${item.title}: ${item.snippet}`)
+    .join("\n");
+
+  const prompt = `Generate 3 short follow-up questions a customer might ask next.
+
+Customer question: ${params.question}
+Assistant answer: ${params.answer}
+Relevant context:
+${sourceSummary}
+
+Rules:
+- Return ONLY a JSON array of 3 strings.
+- Keep each question under 90 characters.
+- Avoid repeating the original question.
+- Make each question concrete and useful.
+- Output language: ${params.outputLanguage}.`;
+
+  try {
+    const generated = await runElasticCompletion(prompt);
+    const parsed = parseFollowUpQuestions(generated);
+    if (parsed.length >= 2) {
+      return parsed.slice(0, 3);
+    }
+  } catch {
+    // Fall through to static fallback.
+  }
+
+  return [
+    "Can you share the exact steps to do this?",
+    "Where can I verify this in the docs?",
+    "What should I do if this still doesn't work?",
+  ];
 }
 
 function buildAgentPrompt(
@@ -191,8 +284,38 @@ export async function POST(req: Request) {
       );
     }
 
+    const supportedLanguages: Record<string, string> = {
+      en: "English",
+      es: "Spanish",
+      fr: "French",
+      de: "German",
+      hi: "Hindi",
+      ar: "Arabic",
+    };
+
+    // Auto-detect language from user text if not explicitly set or set to "auto"
+    const detectLanguage = async (text: string): Promise<string> => {
+      if (language !== "auto" && language !== "en") return language;
+      if (language === "en") {
+        // Quick heuristic: if text contains non-Latin characters, auto-detect
+        const hasNonLatin = /[^\u0000-\u007F]/.test(text);
+        if (!hasNonLatin) return "en";
+      }
+      try {
+        const detected = await runElasticCompletion(
+          `Detect the language of the following text. Reply with ONLY the ISO 639-1 two-letter language code (one of: en, es, fr, de, hi, ar). If unsure, reply "en".\n\nText: ${text}`,
+        );
+        const code = (detected || "en").trim().toLowerCase().slice(0, 2);
+        return supportedLanguages[code] ? code : "en";
+      } catch {
+        return language === "auto" ? "en" : language;
+      }
+    };
+
+    const detectedLang = await detectLanguage(userMessage);
+
     const maybeTranslateToEnglish = async (input: string) => {
-      if (!input || language === "en") return input;
+      if (!input || detectedLang === "en") return input;
       const translated = await runElasticCompletion(
         `Translate this user query to English. Return only the translated text, nothing else:\n${input}`,
       );
@@ -200,15 +323,8 @@ export async function POST(req: Request) {
     };
 
     const maybeTranslateFromEnglish = async (input: string) => {
-      if (!input || language === "en") return input;
-      const languageLabelMap: Record<string, string> = {
-        es: "Spanish",
-        fr: "French",
-        de: "German",
-        hi: "Hindi",
-        ar: "Arabic",
-      };
-      const target = languageLabelMap[language] || "English";
+      if (!input || detectedLang === "en") return input;
+      const target = supportedLanguages[detectedLang] || "English";
       const translated = await runElasticCompletion(
         `Translate this customer support response to ${target}. Keep citation markers like [1], [2] exactly as they are. Return only the translated text:\n${input}`,
       );
@@ -236,13 +352,27 @@ export async function POST(req: Request) {
       const noSourceReplyBase =
         "I'm sorry, I don't have enough information to answer that right now. Would you like me to connect you with our support team? They'll be able to help you directly.";
       const noSourceReply = await maybeTranslateFromEnglish(noSourceReplyBase);
+      const noSourceFollowUps = language === "en"
+        ? [
+            "Can I share more details so you can narrow this down?",
+            "Should I contact human support for this issue?",
+          ]
+        : await generateFollowUpQuestions({
+            question: retrievalQuery,
+            answer: noSourceReply,
+            citations: [],
+            outputLanguage: supportedLanguages[detectedLang] || "English",
+          });
 
-      await createSupportConversationMessage({
+      const savedAssistantMessage = await createSupportConversationMessage({
         teamId,
         sessionId,
         role: "assistant",
         message: noSourceReply,
         sourceRefs: [],
+        confidenceScore: 0,
+        followUpQuestions: noSourceFollowUps,
+        escalationSuggested: true,
       });
 
       return NextResponse.json({
@@ -250,12 +380,16 @@ export async function POST(req: Request) {
         data: {
           sessionId,
           conversationId: null,
+          assistantMessageId: savedAssistantMessage.id,
           reply: noSourceReply,
+          detectedLanguage: detectedLang,
           citations: [],
+          confidenceScore: 0,
+          followUpQuestions: noSourceFollowUps,
           escalation: {
             suggested: true,
             reason: "no_sources",
-            contactUrl: `/support/contact/${encodeURIComponent(teamId)}?sessionId=${encodeURIComponent(sessionId)}&lang=${encodeURIComponent(language)}`,
+            contactUrl: `/support/contact/${encodeURIComponent(teamId)}?sessionId=${encodeURIComponent(sessionId)}&lang=${encodeURIComponent(detectedLang)}`,
           },
         },
       });
@@ -307,10 +441,21 @@ export async function POST(req: Request) {
 
     finalReply = cleanAgentReply(finalReply);
     finalReply = await maybeTranslateFromEnglish(finalReply);
+    const confidenceScore = computeAnswerConfidence(citations);
+    const followUpQuestions = await generateFollowUpQuestions({
+      question: retrievalQuery,
+      answer: finalReply,
+      citations,
+      outputLanguage: supportedLanguages[detectedLang] || "English",
+    });
+    const lowConfidenceThreshold = Number(
+      process.env.ELASTIC_LOW_CONFIDENCE_THRESHOLD || "55",
+    );
 
     const escalationNeeded =
       dissatisfactionRegex.test(userMessage) ||
-      /having trouble generating|temporarily unavailable/i.test(finalReply);
+      /having trouble generating|temporarily unavailable/i.test(finalReply) ||
+      confidenceScore < lowConfidenceThreshold;
 
     // Fire Smart Escalation Workflow in background (non-blocking)
     if (escalationNeeded) {
@@ -324,14 +469,14 @@ export async function POST(req: Request) {
           reason: dissatisfactionRegex.test(userMessage)
             ? "user_dissatisfied"
             : "low_confidence_response",
-          language,
+          language: detectedLang,
         }),
       }).catch(() => {
         // Workflow fire-and-forget — don't block the chat response
       });
     }
 
-    await createSupportConversationMessage({
+    const savedAssistantMessage = await createSupportConversationMessage({
       teamId,
       sessionId,
       role: "assistant",
@@ -341,6 +486,9 @@ export async function POST(req: Request) {
         title: String(item.title),
         url: item.url ? String(item.url) : null,
       })),
+      confidenceScore,
+      followUpQuestions,
+      escalationSuggested: escalationNeeded,
     });
 
     const clientCitations = buildClientCitations(citations);
@@ -350,13 +498,17 @@ export async function POST(req: Request) {
       data: {
         sessionId,
         conversationId,
+        assistantMessageId: savedAssistantMessage.id,
         reply: finalReply,
+        detectedLanguage: detectedLang,
         citations: clientCitations,
+        confidenceScore,
+        followUpQuestions,
         escalation: {
           suggested: escalationNeeded,
           reason: escalationNeeded ? "user_dissatisfied_or_low_confidence" : null,
           contactUrl: escalationNeeded
-            ? `/support/contact/${encodeURIComponent(teamId)}?sessionId=${encodeURIComponent(sessionId)}&lang=${encodeURIComponent(language)}`
+            ? `/support/contact/${encodeURIComponent(teamId)}?sessionId=${encodeURIComponent(sessionId)}&lang=${encodeURIComponent(detectedLang)}`
             : null,
         },
       },

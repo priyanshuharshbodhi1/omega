@@ -14,6 +14,8 @@ const supportConversationsIndex =
 const issueClustersIndex = process.env.ELASTIC_ISSUE_CLUSTERS_INDEX || "issue_clusters";
 const actionAuditLogIndex = process.env.ELASTIC_ACTION_AUDIT_INDEX || "action_audit_log";
 const supportTicketsIndex = process.env.ELASTIC_SUPPORT_TICKETS_INDEX || "support_tickets";
+const supportAnswerFeedbackIndex =
+  process.env.ELASTIC_SUPPORT_ANSWER_FEEDBACK_INDEX || "support_answer_feedback";
 const embeddingEndpointId =
   process.env.ELASTIC_EMBEDDING_ENDPOINT_ID || ".openai-text-embedding-3-small";
 const completionEndpointId =
@@ -543,6 +545,10 @@ export interface SupportConversationMessage {
   role: "user" | "assistant";
   message: string;
   sourceRefs?: Array<{ id: string; title: string; url?: string | null }>;
+  confidenceScore?: number | null;
+  followUpQuestions?: string[];
+  escalationSuggested?: boolean | null;
+  csatRating?: "up" | "down" | null;
   createdAt: string;
 }
 
@@ -558,6 +564,10 @@ export async function createSupportConversationMessage(
     role: data.role,
     message: data.message,
     sourceRefs: data.sourceRefs || [],
+    confidenceScore: data.confidenceScore ?? null,
+    followUpQuestions: data.followUpQuestions || [],
+    escalationSuggested: data.escalationSuggested ?? null,
+    csatRating: data.csatRating ?? null,
     createdAt: now,
   };
 
@@ -569,6 +579,62 @@ export async function createSupportConversationMessage(
   });
 
   return doc;
+}
+
+export async function getSupportConversationMessageById(messageId: string) {
+  try {
+    const result = await esClient.get({
+      index: supportConversationsIndex,
+      id: messageId,
+    });
+    return { id: result._id, ...(result._source as any) } as SupportConversationMessage;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertSupportAnswerFeedback(params: {
+  teamId: string;
+  sessionId: string;
+  assistantMessageId: string;
+  rating: "up" | "down";
+}) {
+  const now = new Date().toISOString();
+  const id = params.assistantMessageId;
+  const doc = {
+    id,
+    teamId: params.teamId,
+    sessionId: params.sessionId,
+    assistantMessageId: params.assistantMessageId,
+    rating: params.rating,
+    isHelpful: params.rating === "up",
+    updatedAt: now,
+  };
+
+  await esClient.update({
+    index: supportAnswerFeedbackIndex,
+    id,
+    refresh: true,
+    doc,
+    upsert: {
+      ...doc,
+      createdAt: now,
+    },
+  });
+
+  await esClient.update({
+    index: supportConversationsIndex,
+    id: params.assistantMessageId,
+    refresh: true,
+    doc: {
+      csatRating: params.rating,
+    },
+  });
+
+  return {
+    ...doc,
+    createdAt: now,
+  };
 }
 
 export async function upsertIssueCluster(data: {

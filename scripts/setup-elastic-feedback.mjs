@@ -73,6 +73,8 @@ async function ensureSupportIndices() {
   const actionAuditIndex = process.env.ELASTIC_ACTION_AUDIT_INDEX || "action_audit_log";
   const supportTicketsIndex =
     process.env.ELASTIC_SUPPORT_TICKETS_INDEX || "support_tickets";
+  const supportAnswerFeedbackIndex =
+    process.env.ELASTIC_SUPPORT_ANSWER_FEEDBACK_INDEX || "support_answer_feedback";
 
   const supportDocsExists = await client.indices.exists({ index: supportDocsIndex });
   if (!supportDocsExists) {
@@ -119,6 +121,10 @@ async function ensureSupportIndices() {
           role: { type: "keyword" },
           message: { type: "text" },
           sourceRefs: { type: "object", enabled: false },
+          confidenceScore: { type: "integer" },
+          followUpQuestions: { type: "text" },
+          escalationSuggested: { type: "boolean" },
+          csatRating: { type: "keyword" },
           createdAt: { type: "date" },
         },
       },
@@ -204,6 +210,30 @@ async function ensureSupportIndices() {
   } else {
     console.log(`Index "${supportTicketsIndex}" already exists.`);
   }
+
+  const supportAnswerFeedbackExists = await client.indices.exists({
+    index: supportAnswerFeedbackIndex,
+  });
+  if (!supportAnswerFeedbackExists) {
+    await client.indices.create({
+      index: supportAnswerFeedbackIndex,
+      mappings: {
+        properties: {
+          id: { type: "keyword" },
+          teamId: { type: "keyword" },
+          sessionId: { type: "keyword" },
+          assistantMessageId: { type: "keyword" },
+          rating: { type: "keyword" },
+          isHelpful: { type: "boolean" },
+          createdAt: { type: "date" },
+          updatedAt: { type: "date" },
+        },
+      },
+    });
+    console.log(`Created index "${supportAnswerFeedbackIndex}".`);
+  } else {
+    console.log(`Index "${supportAnswerFeedbackIndex}" already exists.`);
+  }
 }
 
 async function upsertPipeline() {
@@ -259,11 +289,180 @@ async function backfillEmbeddings() {
   );
 }
 
+async function ensureDailyStatsTransform() {
+  const indexName = "feedback_daily_stats";
+  const transformId = "feedback_daily_stats_transform";
+
+  // Create destination index if it doesn't exist
+  const indexExists = await client.indices.exists({ index: indexName });
+  if (!indexExists) {
+    await client.indices.create({
+      index: indexName,
+      mappings: {
+        properties: {
+          teamId: { type: "keyword" },
+          day: { type: "date" },
+          total: { type: "long" },
+          avg_rating: { type: "float" },
+          positive_count: { type: "long" },
+          negative_count: { type: "long" },
+          neutral_count: { type: "long" },
+        },
+      },
+    });
+    console.log(`Created index "${indexName}".`);
+  } else {
+    console.log(`Index "${indexName}" already exists.`);
+  }
+
+  // Delete existing transform if present (to allow re-creation)
+  try {
+    await client.transform.getTransform({ transform_id: transformId });
+    // Transform exists – stop + delete so we can recreate with latest config
+    try {
+      await client.transform.stopTransform({
+        transform_id: transformId,
+        wait_for_completion: true,
+        timeout: "30s",
+      });
+    } catch {
+      // may already be stopped
+    }
+    await client.transform.deleteTransform({ transform_id: transformId });
+    console.log(`Deleted existing transform "${transformId}".`);
+  } catch {
+    // Transform doesn't exist – that's fine
+  }
+
+  // Create the continuous transform
+  await client.transform.putTransform({
+    transform_id: transformId,
+    source: {
+      index: ["feedback"],
+    },
+    dest: {
+      index: indexName,
+    },
+    pivot: {
+      group_by: {
+        teamId: { terms: { field: "teamId" } },
+        day: { date_histogram: { field: "createdAt", calendar_interval: "1d" } },
+      },
+      aggregations: {
+        total: { value_count: { field: "teamId" } },
+        avg_rating: { avg: { field: "rate" } },
+        positive_count: {
+          filter: { term: { sentiment: "positive" } },
+        },
+        negative_count: {
+          filter: { term: { sentiment: "negative" } },
+        },
+        neutral_count: {
+          filter: { term: { sentiment: "neutral" } },
+        },
+      },
+    },
+    sync: {
+      time: {
+        field: "createdAt",
+        delay: "60s",
+      },
+    },
+    frequency: "1m",
+    description:
+      "Continuous transform: daily feedback stats per team (count, avg rating, sentiment breakdown)",
+  });
+  console.log(`Created continuous transform "${transformId}".`);
+
+  // Start the transform
+  await client.transform.startTransform({ transform_id: transformId });
+  console.log(`Started transform "${transformId}".`);
+}
+
+async function ensureSentimentSpikeWatcher() {
+  const watchId = "omega_sentiment_spike";
+
+  try {
+    await client.watcher.putWatch({
+      id: watchId,
+      trigger: {
+        schedule: { interval: "5m" },
+      },
+      input: {
+        search: {
+          request: {
+            indices: ["feedback"],
+            body: {
+              size: 0,
+              query: {
+                range: { createdAt: { gte: "now-1h" } },
+              },
+              aggs: {
+                by_team: {
+                  terms: { field: "teamId", size: 50 },
+                  aggs: {
+                    total: { value_count: { field: "sentiment" } },
+                    negative: {
+                      filter: { term: { sentiment: "negative" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      condition: {
+        script: {
+          source: `
+            def buckets = ctx.payload.aggregations.by_team.buckets;
+            for (bucket in buckets) {
+              def total = bucket.total.value;
+              def neg = bucket.negative.doc_count;
+              if (total >= 3 && (neg * 1.0 / total) > 0.4) {
+                return true;
+              }
+            }
+            return false;
+          `.trim(),
+          lang: "painless",
+        },
+      },
+      actions: {
+        log_spike: {
+          logging: {
+            text: "Sentiment spike detected – negative rate > 40% in last hour for at least one team.",
+          },
+        },
+      },
+    });
+    console.log(`Created/updated Watcher "${watchId}".`);
+  } catch (err) {
+    // Watcher API is unavailable on Elastic Serverless – graceful skip
+    const msg = err?.message || String(err);
+    if (
+      msg.includes("action_request_validation_exception") ||
+      msg.includes("watcher") ||
+      msg.includes("x_content_parse_exception") ||
+      msg.includes("404") ||
+      msg.includes("not found")
+    ) {
+      console.log(
+        `Watcher API not available (likely Serverless) – skipping "${watchId}". (${msg.slice(0, 100)})`,
+      );
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function main() {
   await ensureFeedbackIndex();
   await ensureSupportIndices();
   await upsertPipeline();
   await backfillEmbeddings();
+  await ensureDailyStatsTransform();
+  await ensureSentimentSpikeWatcher();
 }
 
 main().catch((error) => {

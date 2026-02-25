@@ -86,24 +86,36 @@ FROM feedback
     const ratingDrop =
       (baseline.baseline_avg_rating || 0) - (recent.recent_avg_rating || 0);
 
+    const hasEnoughRecentData = recent.recent_total >= 3;
     const spikeDetected =
-      recentNegRate > baselineNegRate * 1.3 || ratingDrop > 0.5;
+      hasEnoughRecentData &&
+      (recentNegRate > baselineNegRate * 1.3 || ratingDrop > 0.5);
 
-    if (!spikeDetected && recent.recent_total > 0) {
+    if (!spikeDetected) {
+      const noRecentData = recent.recent_total === 0;
       await createActionAuditLog({
         teamId,
         action: "sentiment_spike_check",
         status: "success",
-        detail: `No spike. Recent neg: ${(recentNegRate * 100).toFixed(1)}%, Baseline: ${(baselineNegRate * 100).toFixed(1)}%`,
+        detail: noRecentData
+          ? "No spike. No recent feedback in the last hour."
+          : `No spike. Recent neg: ${(recentNegRate * 100).toFixed(1)}%, Baseline: ${(baselineNegRate * 100).toFixed(1)}%`,
       });
 
       return NextResponse.json({
         success: true,
         spike_detected: false,
+        reason: noRecentData
+          ? "No recent feedback in the last hour."
+          : hasEnoughRecentData
+            ? "No statistically significant spike detected."
+            : "Insufficient recent feedback volume for spike detection (minimum 3).",
         metrics: {
           recent_negative_rate: recentNegRate,
           baseline_negative_rate: baselineNegRate,
           rating_drop: ratingDrop,
+          recent_total: recent.recent_total,
+          baseline_total: baseline.baseline_total,
         },
       });
     }
