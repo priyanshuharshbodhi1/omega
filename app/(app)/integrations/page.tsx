@@ -9,24 +9,124 @@ import {
 import { buttonVariants, Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTeam } from "@/lib/store";
-import { FileUp, Globe, Link, QrCode } from "lucide-react";
+import { FileUp, Globe, Link, QrCode, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
 import toast from "react-hot-toast";
+
+type IndexMode = "link" | "pdf";
+
+type IndexProgress = {
+  stage?: string;
+  message?: string;
+  progressPct?: number;
+  pagesDiscovered?: number;
+  pagesCrawled?: number;
+  pagesIndexed?: number;
+  chunksIndexed?: number;
+  chunksTotal?: number;
+  pdfPages?: number;
+};
+
+function parseSSEBlock(rawBlock: string) {
+  const lines = String(rawBlock || "").split("\n");
+  let eventName = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+
+  if (dataLines.length === 0) return null;
+
+  const payloadText = dataLines.join("\n");
+  try {
+    return {
+      eventName,
+      payload: JSON.parse(payloadText),
+    };
+  } catch {
+    return {
+      eventName,
+      payload: payloadText,
+    };
+  }
+}
+
+async function consumeSSE(
+  response: Response,
+  onProgress: (payload: IndexProgress) => void,
+) {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Streaming not available in this browser.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completion: any = null;
+  let streamError: string | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
+    let boundary = buffer.indexOf("\n\n");
+
+    while (boundary !== -1) {
+      const rawBlock = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+
+      if (!rawBlock) continue;
+      const parsed = parseSSEBlock(rawBlock);
+      if (!parsed) continue;
+
+      if (parsed.eventName === "progress") {
+        onProgress((parsed.payload || {}) as IndexProgress);
+      } else if (parsed.eventName === "complete") {
+        completion = parsed.payload;
+      } else if (parsed.eventName === "error") {
+        const payload = parsed.payload as { message?: string };
+        streamError = payload?.message || "Indexing failed.";
+      }
+    }
+  }
+
+  if (streamError) {
+    throw new Error(streamError);
+  }
+
+  if (!completion) {
+    throw new Error("Indexing finished without completion response.");
+  }
+
+  return completion;
+}
 
 export default function Dashboard() {
   const [link, setLink] = useState("");
   const [snippet, setSnippet] = useState("");
   const [copied, setCopied] = useState<"link" | "snippet" | "qr" | null>(null);
 
+  const [indexMode, setIndexMode] = useState<IndexMode>("link");
   const [sourceUrl, setSourceUrl] = useState("");
-  const [sourceTitle, setSourceTitle] = useState("");
+  const [sourceName, setSourceName] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfInputKey, setPdfInputKey] = useState(0);
   const [indexedSources, setIndexedSources] = useState<any[]>([]);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
+  const [progressMeta, setProgressMeta] = useState<IndexProgress | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
+  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
   const team = useTeam((state) => state.team);
 
   const mode = useMemo(() => team?.style?.widget_mode || "feedback", [team]);
@@ -62,96 +162,219 @@ export default function Dashboard() {
     }
   };
 
-  const startProgressSimulation = (label: string) => {
-    setProgressLabel(label);
-    setProgress(5);
-    let pct = 5;
-    const id = setInterval(() => {
-      pct = Math.min(92, pct + Math.ceil(Math.random() * 9));
-      setProgress(pct);
-    }, 300);
-    return id;
+  const resetProgress = () => {
+    setProgress(0);
+    setProgressLabel("");
+    setProgressMeta(null);
+  };
+
+  const applyProgress = useCallback((payload: IndexProgress) => {
+    if (typeof payload.progressPct === "number") {
+      const bounded = Math.max(1, Math.min(100, Math.round(payload.progressPct)));
+      setProgress(bounded);
+    }
+    if (payload.message) {
+      setProgressLabel(payload.message);
+    }
+    setProgressMeta((prev) => ({
+      ...(prev || {}),
+      ...payload,
+    }));
+  }, []);
+
+  const parseErrorMessage = async (response: Response, fallback: string) => {
+    try {
+      const data = await response.json();
+      return String(data?.message || fallback);
+    } catch {
+      return fallback;
+    }
   };
 
   const handleIndexUrl = async () => {
-    if (!team?.id || !sourceUrl.trim()) {
+    if (!team?.id) {
+      toast.error("Team not found.");
+      return;
+    }
+    if (!sourceName.trim()) {
+      toast.error("Source name is required.");
+      return;
+    }
+    if (!sourceUrl.trim()) {
       toast.error("Add a source URL first.");
       return;
     }
 
     setIsIndexing(true);
-    const timer = startProgressSimulation("Indexing link...");
+    setProgress(5);
+    setProgressLabel("Starting website crawl...");
+    setProgressMeta({
+      pagesDiscovered: 0,
+      pagesCrawled: 0,
+      pagesIndexed: 0,
+      chunksIndexed: 0,
+    });
+
     try {
-      const response = await fetch("/api/support/index-source", {
+      const response = await fetch("/api/support/index-source?stream=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           teamId: team.id,
           source: {
             url: sourceUrl.trim(),
-            title: sourceTitle.trim() || undefined,
+            name: sourceName.trim(),
           },
         }),
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to index link");
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to index link"));
+      }
+
+      const contentType = String(response.headers.get("content-type") || "");
+      let data: any = null;
+
+      if (contentType.includes("text/event-stream")) {
+        const completion = await consumeSSE(response, applyProgress);
+        data = completion?.data || completion;
+      } else {
+        const payload = await response.json();
+        if (!payload?.success) {
+          throw new Error(payload?.message || "Failed to index link");
+        }
+        data = payload?.data;
       }
 
       setProgress(100);
-      toast.success(`Indexed ${data.data?.chunksIndexed || 0} chunk(s).`);
+      setProgressLabel("Indexing complete.");
+      toast.success(
+        `Indexed ${data?.pagesIndexed || 0} page(s) and ${data?.chunksIndexed || 0} chunk(s).`,
+      );
+      const truncatedSources = Array.isArray(data?.sources)
+        ? data.sources.filter((source: any) => Boolean(source?.truncated))
+        : [];
+      if (truncatedSources.length > 0) {
+        toast(
+          "Crawl limit reached before finishing every route. Increase SUPPORT_CRAWL_MAX_PAGES if needed.",
+        );
+      }
       setSourceUrl("");
-      setSourceTitle("");
+      setSourceName("");
       await loadSources();
     } catch (error: any) {
       toast.error(error?.message || "Failed to index link");
     } finally {
-      clearInterval(timer);
       setTimeout(() => {
-        setProgress(0);
-        setProgressLabel("");
-      }, 800);
+        resetProgress();
+      }, 1200);
       setIsIndexing(false);
     }
   };
 
   const handleIndexPdf = async () => {
-    if (!team?.id || !pdfFile) {
+    if (!team?.id) {
+      toast.error("Team not found.");
+      return;
+    }
+    if (!sourceName.trim()) {
+      toast.error("Source name is required.");
+      return;
+    }
+    if (!pdfFile) {
       toast.error("Select a PDF file first.");
       return;
     }
 
     setIsIndexing(true);
-    const timer = startProgressSimulation("Indexing PDF...");
+    setProgress(5);
+    setProgressLabel("Uploading and parsing PDF...");
+    setProgressMeta({
+      chunksIndexed: 0,
+      chunksTotal: 0,
+      pdfPages: 0,
+    });
+
     try {
       const formData = new FormData();
       formData.append("teamId", team.id);
-      formData.append("title", sourceTitle.trim());
+      formData.append("name", sourceName.trim());
       formData.append("file", pdfFile);
 
-      const response = await fetch("/api/support/index-pdf", {
+      const response = await fetch("/api/support/index-pdf?stream=1", {
         method: "POST",
         body: formData,
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to index PDF");
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to index PDF"));
+      }
+
+      const contentType = String(response.headers.get("content-type") || "");
+      let data: any = null;
+
+      if (contentType.includes("text/event-stream")) {
+        const completion = await consumeSSE(response, applyProgress);
+        data = completion?.data || completion;
+      } else {
+        const payload = await response.json();
+        if (!payload?.success) {
+          throw new Error(payload?.message || "Failed to index PDF");
+        }
+        data = payload?.data;
       }
 
       setProgress(100);
-      toast.success(`Indexed ${data.data?.chunksIndexed || 0} chunk(s) from PDF.`);
+      setProgressLabel("Indexing complete.");
+      toast.success(
+        `Indexed ${data?.chunksIndexed || 0} chunk(s) from ${data?.pdfPages || "?"} PDF page(s).`,
+      );
       setPdfFile(null);
-      setSourceTitle("");
+      setPdfInputKey((prev) => prev + 1);
+      setSourceName("");
       await loadSources();
     } catch (error: any) {
       toast.error(error?.message || "Failed to index PDF");
     } finally {
-      clearInterval(timer);
       setTimeout(() => {
-        setProgress(0);
-        setProgressLabel("");
-      }, 800);
+        resetProgress();
+      }, 1200);
       setIsIndexing(false);
+    }
+  };
+
+  const handleDeleteSource = async (sourceId: string) => {
+    if (!team?.id || !sourceId) return;
+
+    const confirmed = window.confirm(
+      "Delete this source? Omega will stop using it for future answers.",
+    );
+    if (!confirmed) return;
+
+    setDeletingSourceId(sourceId);
+    try {
+      const response = await fetch(
+        `/api/support/sources/${encodeURIComponent(sourceId)}?teamId=${encodeURIComponent(team.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to delete source");
+      }
+
+      setIndexedSources((prev) =>
+        prev.filter((item) => String(item?.sourceId) !== String(sourceId)),
+      );
+      toast.success(
+        `Deleted source (${Number(data?.data?.chunksDeleted || 0)} chunk(s) removed).`,
+      );
+      await loadSources();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete source");
+    } finally {
+      setDeletingSourceId(null);
     }
   };
 
@@ -209,8 +432,26 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="text-sm text-[#1F1A15] mb-4">Share a quick link for your selected widget mode.</p>
-            <Input value={link} readOnly className="h-11 rounded-full border-[#D9CDBA] bg-[#FFFDF7] px-4 mb-3" />
-            <Button variant="dark" size="sm" onClick={() => handleCopy(link, "link")}>{copied === "link" ? "Copied" : "Copy Link"}</Button>
+            <AlertDialog>
+              <AlertDialogTrigger className={buttonVariants({ variant: "dark", size: "sm" })}>
+                Connect
+              </AlertDialogTrigger>
+              <AlertDialogContent className="max-w-lg rounded-2xl border border-[#D2C4B3] bg-[#FFFDF7] p-0 shadow-[0_20px_60px_rgba(30,20,10,0.25)]">
+                <div className="px-6 pt-6 pb-4 border-b border-[#D2C4B3]">
+                  <h3 className="text-lg font-semibold text-[#1F1A15]">Quick Link</h3>
+                  <p className="text-xs text-[#4B3F35] mt-1">Direct URL to launch your current widget mode.</p>
+                </div>
+                <div className="px-6 py-5">
+                  <Input value={link} readOnly className="h-11 rounded-full border-[#D9CDBA] bg-[#FFFDF7] px-4" />
+                </div>
+                <div className="px-6 pb-6 flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => handleCopy(link, "link")} className="h-9 px-4 rounded-full border border-[#D9CDBA] text-[#1F1A15] text-xs font-semibold uppercase tracking-widest hover:bg-[#E6D8C6]">
+                    {copied === "link" ? "Copied" : "Copy Link"}
+                  </button>
+                  <AlertDialogCancel className="h-9 px-4 rounded-full border border-[#D9CDBA] text-[#1F1A15] hover:bg-[#E6D8C6]">Close</AlertDialogCancel>
+                </div>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
 
           <div className="w-full bg-[#FFFDF7] border border-[#D2C4B3] rounded-2xl p-6 shadow-[0_12px_30px_rgba(55,40,25,0.12)]">
@@ -220,12 +461,30 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-2">
                 <h5 className="text-[11px] font-bold uppercase tracking-widest text-violet-600">Website</h5>
-                <InfoTip text="Embed this script in your website to load the Zapfeed widget." />
+                <InfoTip text="Embed this script in your website to load the Omega widget." />
               </div>
             </div>
             <p className="text-sm text-[#1F1A15] mb-4">Embed mode-aware widget on your website.</p>
-            <textarea value={snippet} readOnly rows={3} className="w-full rounded-xl border border-[#D9CDBA] bg-[#FFFDF7] px-4 py-3 text-xs text-[#1F1A15] mb-3" />
-            <Button variant="dark" size="sm" onClick={() => handleCopy(snippet, "snippet")}>{copied === "snippet" ? "Copied" : "Copy Script"}</Button>
+            <AlertDialog>
+              <AlertDialogTrigger className={buttonVariants({ variant: "dark", size: "sm" })}>
+                Connect
+              </AlertDialogTrigger>
+              <AlertDialogContent className="w-full max-w-lg rounded-2xl border border-[#D2C4B3] bg-[#FFFDF7] p-0 shadow-[0_20px_60px_rgba(30,20,10,0.25)]">
+                <div className="px-6 pt-6 pb-4 border-b border-[#D2C4B3]">
+                  <h3 className="text-lg font-semibold text-[#1F1A15]">Website Widget Snippet</h3>
+                  <p className="text-xs text-[#4B3F35] mt-1">Embed this script in your website to load the Omega widget.</p>
+                </div>
+                <div className="px-6 py-5">
+                  <textarea value={snippet} readOnly rows={4} className="w-full rounded-xl border border-[#D9CDBA] bg-[#FFFDF7] px-4 py-3 text-xs text-[#1F1A15]" />
+                </div>
+                <div className="px-6 pb-6 flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => handleCopy(snippet, "snippet")} className="h-9 px-4 rounded-full border border-[#D9CDBA] text-[#1F1A15] text-xs font-semibold uppercase tracking-widest hover:bg-[#E6D8C6]">
+                    {copied === "snippet" ? "Copied" : "Copy Script"}
+                  </button>
+                  <AlertDialogCancel className="h-9 px-4 rounded-full border border-[#D9CDBA] text-[#1F1A15] hover:bg-[#E6D8C6]">Close</AlertDialogCancel>
+                </div>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 
@@ -233,37 +492,100 @@ export default function Dashboard() {
           <div className="bg-[#FFFDF7] border border-[#D2C4B3] rounded-2xl p-6 shadow-[0_12px_30px_rgba(55,40,25,0.12)] space-y-4">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35] flex items-center gap-2">
-                Arya Knowledge Hub
-                <InfoTip text="Index docs/links/PDFs here. Arya cites these sources when answering users." />
+                Omega Knowledge Hub
+                <InfoTip text="Index docs/links/PDFs here. Omega cites these sources when answering users." />
               </div>
               <h3 className="text-lg font-semibold text-[#1F1A15] mt-1">Index Links and PDFs</h3>
-              <p className="text-xs text-[#4B3F35] mt-1">Arya answers from these indexed sources with citations.</p>
+              <p className="text-xs text-[#4B3F35] mt-1">
+                For docs links, Omega crawls internal routes and indexes each page with citations.
+              </p>
             </div>
 
-            <Input placeholder="Optional source title" value={sourceTitle} onChange={(e) => setSourceTitle(e.target.value)} />
-
-            <div className="space-y-2 rounded-xl border border-[#D2C4B3] p-3">
-              <label className="text-xs font-semibold text-[#4B3F35]">Index Website/Link</label>
-              <Input placeholder="https://docs.yourapp.com/..." value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
-              <Button variant="dark" size="sm" disabled={isIndexing} onClick={handleIndexUrl}>Index Link</Button>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[#4B3F35]">Source Name *</label>
+              <Input
+                placeholder="Slack Docs"
+                value={sourceName}
+                onChange={(e) => setSourceName(e.target.value)}
+              />
             </div>
 
-            <div className="space-y-2 rounded-xl border border-[#D2C4B3] p-3">
-              <label className="text-xs font-semibold text-[#4B3F35]">Index PDF</label>
-              <Input type="file" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files?.[0] || null)} />
-              <Button variant="dark" size="sm" disabled={isIndexing} onClick={handleIndexPdf}>
-                <FileUp className="w-4 h-4 mr-1" /> Index PDF
-              </Button>
-            </div>
+            <Tabs
+              value={indexMode}
+              onValueChange={(value) => setIndexMode(value as IndexMode)}
+              className="space-y-3"
+            >
+              <TabsList className="grid grid-cols-2 rounded-full bg-[#F4EBDE] p-1">
+                <TabsTrigger value="link" className="text-xs uppercase tracking-widest">
+                  Link
+                </TabsTrigger>
+                <TabsTrigger value="pdf" className="text-xs uppercase tracking-widest">
+                  PDF
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="link" className="mt-0">
+                <div className="space-y-2 rounded-xl border border-[#D2C4B3] p-3">
+                  <label className="text-xs font-semibold text-[#4B3F35]">Index Website/Link</label>
+                  <Input
+                    placeholder="https://docs.yourapp.com/..."
+                    value={sourceUrl}
+                    onChange={(e) => setSourceUrl(e.target.value)}
+                  />
+                  <Button
+                    variant="dark"
+                    size="sm"
+                    disabled={isIndexing || !sourceName.trim() || !sourceUrl.trim()}
+                    onClick={handleIndexUrl}
+                  >
+                    Index Link
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="pdf" className="mt-0">
+                <div className="space-y-2 rounded-xl border border-[#D2C4B3] p-3">
+                  <label className="text-xs font-semibold text-[#4B3F35]">Index PDF</label>
+                  <Input
+                    key={pdfInputKey}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                  />
+                  <Button
+                    variant="dark"
+                    size="sm"
+                    disabled={isIndexing || !sourceName.trim() || !pdfFile}
+                    onClick={handleIndexPdf}
+                  >
+                    <FileUp className="w-4 h-4 mr-1" /> Index PDF
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
 
             {progress > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-2 rounded-xl border border-[#D2C4B3] bg-[#FAF2E8] p-3">
                 <div className="flex justify-between text-xs text-[#4B3F35]">
                   <span>{progressLabel}</span>
                   <span>{progress}%</span>
                 </div>
                 <div className="h-2 rounded-full bg-[#E6D8C6] overflow-hidden">
                   <div className="h-full bg-[#2D6A4F] transition-all" style={{ width: `${progress}%` }} />
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-[#4B3F35]">
+                  <div>Pages discovered: {progressMeta?.pagesDiscovered || 0}</div>
+                  <div>Pages crawled: {progressMeta?.pagesCrawled || 0}</div>
+                  <div>Pages indexed: {progressMeta?.pagesIndexed || 0}</div>
+                  <div>
+                    Chunks indexed: {progressMeta?.chunksIndexed || 0}
+                    {typeof progressMeta?.chunksTotal === "number" && progressMeta.chunksTotal > 0
+                      ? ` / ${progressMeta.chunksTotal}`
+                      : ""}
+                  </div>
+                  {typeof progressMeta?.pdfPages === "number" && progressMeta.pdfPages > 0 ? (
+                    <div>PDF pages parsed: {progressMeta.pdfPages}</div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -274,9 +596,9 @@ export default function Dashboard() {
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35] flex items-center gap-2">
                   Indexed Sources
-                  <InfoTip text="Knowledge sources currently indexed for this team and used by Arya retrieval." />
+                  <InfoTip text="Knowledge sources currently indexed for this team and used by Omega retrieval." />
                 </div>
-                <h3 className="text-lg font-semibold text-[#1F1A15] mt-1">What Arya currently knows</h3>
+                <h3 className="text-lg font-semibold text-[#1F1A15] mt-1">What Omega currently knows</h3>
               </div>
               <Button variant="dark" size="sm" onClick={loadSources}>Refresh</Button>
             </div>
@@ -284,12 +606,24 @@ export default function Dashboard() {
             {indexedSources.length === 0 ? (
               <p className="text-sm text-[#4B3F35]">No indexed sources yet.</p>
             ) : (
-              <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
                 {indexedSources.map((item) => (
                   <div key={item.sourceId} className="rounded-xl border border-[#D2C4B3] p-3">
-                    <div className="text-sm font-semibold text-[#1F1A15]">{item.title}</div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm font-semibold text-[#1F1A15]">{item.title}</div>
+                      <button
+                        type="button"
+                        disabled={deletingSourceId === item.sourceId}
+                        onClick={() => handleDeleteSource(String(item.sourceId))}
+                        className="h-7 min-w-7 px-2 rounded-md border border-[#E0B8B8] text-[#9B3030] hover:bg-[#F9E8E8] disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
+                        aria-label={`Delete source ${item.title || item.sourceId}`}
+                        title="Delete source"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <div className="text-xs text-[#4B3F35] mt-1">
-                      Type: {item.sourceType} · Chunks: {item.chunks} · Updated: {String(item.updatedAt || "").split("T")[0] || "N/A"}
+                      Type: {item.sourceType} · Pages: {item.pages || 0} · Chunks: {item.chunks} · Updated: {String(item.updatedAt || "").split("T")[0] || "N/A"}
                     </div>
                     {item.url ? (
                       <a href={item.url} target="_blank" rel="noreferrer" className="text-xs underline text-[#2D6A4F] mt-1 inline-block">

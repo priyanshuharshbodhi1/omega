@@ -39,15 +39,15 @@ function pickAgentId(question: string) {
   ];
 
   if (triageHints.some((hint) => text.includes(hint))) {
-    return process.env.ELASTIC_TRIAGE_AGENT_ID || "zapfeed_support_triage_agent_v1";
+    return process.env.ELASTIC_TRIAGE_AGENT_ID || "omega_support_triage";
   }
   if (execHints.some((hint) => text.includes(hint))) {
-    return process.env.ELASTIC_EXEC_AGENT_ID || "zapfeed_exec_brief_agent_v1";
+    return process.env.ELASTIC_EXEC_AGENT_ID || "omega_executive_brief";
   }
   return (
     process.env.ELASTIC_CHAT_AGENT_ID ||
     process.env.ELASTIC_SUMMARY_AGENT_ID ||
-    "zapfeed_insights_agent_v1"
+    "omega_insights"
   );
 }
 
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   const agentId = pickAgentId(currentMessageContent);
   const contextSize = parsePositiveInt(process.env.ELASTIC_CHAT_CONTEXT_SIZE, 6);
   const agentTimeoutMs = parsePositiveInt(process.env.ELASTIC_AGENT_TIMEOUT_MS, 7000);
-  const mode = (process.env.ELASTIC_ANALYSIS_MODE || "fast").toLowerCase();
+  const mode = (process.env.ELASTIC_ANALYSIS_MODE || "deep").toLowerCase();
 
   try {
     const teamDetails = await getTeam(teamId);
@@ -261,7 +261,7 @@ Answer requirements:
       }
     } catch (agentError) {
       console.error("Agent Builder chat failed:", agentError);
-      return new Response("Zapfeed agent is temporarily unavailable.", {
+      return new Response("Omega agent is temporarily unavailable.", {
         status: 502,
       });
     }

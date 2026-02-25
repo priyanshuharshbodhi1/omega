@@ -25,6 +25,155 @@ function withTimeout<T>(
   });
 }
 
+function buildSourceContext(
+  citations: Array<{
+    title: string;
+    snippet: string;
+    content?: string;
+    url?: string | null;
+  }>,
+) {
+  return citations
+    .map((item, idx) => {
+      const body = item.content || item.snippet || "";
+      return `[Source ${idx + 1}] Title: ${item.title}\nContent: ${body}${item.url ? `\nURL: ${item.url}` : ""}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+function buildAgentPrompt(
+  query: string,
+  sourceContext: string,
+  sourceCount: number,
+) {
+  return `You are a helpful customer support assistant. A customer has asked the following question. Answer it using ONLY the provided sources below.
+
+CUSTOMER QUESTION: ${query}
+
+---
+KNOWLEDGE BASE SOURCES (${sourceCount} results):
+${sourceContext}
+---
+
+INSTRUCTIONS:
+1. Answer the customer's question directly and naturally, as a knowledgeable support agent would.
+2. Only use information from the sources above. Never make up information, policies, or details.
+3. Place citation numbers like [1], [2] inline right after the sentence or fact they support. Each citation number corresponds to a source above.
+4. If the sources only partially answer the question, answer what you can and clearly state what you couldn't find.
+5. If the question is ambiguous or too vague to answer well, ask ONE specific clarifying question to help you give a better answer.
+6. Keep your answer concise but complete. Use bullet points or short paragraphs for readability.
+7. Do NOT mention "sources", "indexed documents", "knowledge base", or any internal system details. Just answer naturally.
+8. Do NOT start with "Based on the provided sources" or similar meta-phrases. Jump straight into the answer.
+9. If none of the sources are relevant to the question, say: "I don't have enough information to answer that question. Could you rephrase or provide more details? You can also reach out to our support team for further help."`;
+}
+
+/**
+ * When the Agent Builder times out, use Elastic Completion (fast LLM) to
+ * generate a proper answer from the retrieved docs instead of dumping raw
+ * snippets.
+ */
+async function buildFallbackReply(
+  query: string,
+  citations: Array<{ title: string; snippet: string; content?: string; url?: string | null }>,
+) {
+  const top = citations.slice(0, 3);
+  const context = top
+    .map((item, idx) => {
+      const body = item.content || item.snippet || "";
+      const trimmed = body.length > 600 ? body.slice(0, 600) + "..." : body;
+      return `[${idx + 1}] ${item.title}: ${trimmed}`;
+    })
+    .join("\n\n");
+
+  const completionPrompt = `You are a helpful customer support assistant. Answer the customer's question using ONLY the information below. Be concise, natural, and helpful. Use [1], [2], [3] inline citations after facts. Do NOT mention "sources" or "documents". If the information doesn't fully answer the question, say what you can and ask a clarifying question.
+
+Customer question: ${query}
+
+Information:
+${context}
+
+Answer:`;
+
+  try {
+    const generated = await runElasticCompletion(completionPrompt);
+    if (generated && generated.length > 20) {
+      return generated;
+    }
+  } catch {
+    // Fall through to static fallback
+  }
+
+  // Last-resort static fallback
+  return "I wasn't able to find a specific answer to your question. Could you provide a bit more detail about what you're trying to do? That way I can help you better. You can also reach out to our support team directly.";
+}
+
+/**
+ * Clean up any internal/meta language the agent may have leaked and
+ * normalize formatting for the chat widget.
+ */
+function cleanAgentReply(text: string): string {
+  let cleaned = text
+    // Remove meta-phrases about sources/documents
+    .replace(/\b[Bb]ased on (?:the )?(?:provided |retrieved |indexed |available )?(?:sources?|documents?|information)\b/g, "")
+    .replace(/\b[Aa]ccording to (?:the )?(?:provided |indexed |retrieved )?(?:documents?|sources?|information)\b/g, "")
+    .replace(/\bfrom the (?:indexed |provided |retrieved )?(?:knowledge base|sources?|documents?)\b/g, "")
+    .replace(/\bthe (?:provided |indexed |retrieved )(?:sources?|documents?|information)\b/gi, "the available information")
+    .replace(/\bno (?:indexed |relevant )?(?:sources?|documents?) (?:were )?found\b/gi, "I couldn't find specific information on that")
+    // Clean up leading commas/whitespace left after removals
+    .replace(/^\s*[,;]\s*/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // Remove "## Answer" / "## Citations" / "## Need Clarification" headers
+  // that the old prompt format used - we want natural flowing text
+  cleaned = cleaned
+    .replace(/^##\s*Answer\s*\n*/im, "")
+    .replace(/^##\s*Citations?\s*\n*/im, "\n")
+    .replace(/^##\s*Need Clarification\s*\n*/im, "\n")
+    .trim();
+
+  return cleaned;
+}
+
+/**
+ * Build deduplicated citation list for the client. Multiple chunks from
+ * the same source get merged into one citation entry.
+ */
+function buildClientCitations(
+  citations: Array<{
+    id: string;
+    title: string;
+    url?: string | null;
+    snippet: string;
+    sourceType: string;
+    sourceId?: string | null;
+  }>,
+) {
+  const seen = new Map<string, {
+    id: string;
+    title: string;
+    url: string | null;
+    snippet: string;
+    sourceType: string;
+  }>();
+
+  for (const item of citations) {
+    // Deduplicate by sourceId (same document, different chunks) or by title+url
+    const key = item.sourceId || `${item.title}::${item.url || ""}`;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        id: item.id,
+        title: item.title,
+        url: item.url || null,
+        snippet: item.snippet.length > 120 ? item.snippet.slice(0, 120) + "..." : item.snippet,
+        sourceType: item.sourceType,
+      });
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -33,7 +182,7 @@ export async function POST(req: Request) {
     const language = String(body?.language || "en").toLowerCase();
     const sessionId = String(body?.sessionId || `session-${Date.now()}`);
     const dissatisfactionRegex =
-      /(not helpful|not satisfied|unsatisfied|didn't help|did not help|human support|talk to human|agent is wrong|bad answer)/i;
+      /(not helpful|not satisfied|unsatisfied|didn't help|did not help|human support|talk to human|agent is wrong|bad answer|speak to someone|real person|real agent)/i;
 
     if (!teamId || !userMessage) {
       return NextResponse.json(
@@ -45,7 +194,7 @@ export async function POST(req: Request) {
     const maybeTranslateToEnglish = async (input: string) => {
       if (!input || language === "en") return input;
       const translated = await runElasticCompletion(
-        `Translate this user query to English and return only translated text:\n${input}`,
+        `Translate this user query to English. Return only the translated text, nothing else:\n${input}`,
       );
       return translated || input;
     };
@@ -61,7 +210,7 @@ export async function POST(req: Request) {
       };
       const target = languageLabelMap[language] || "English";
       const translated = await runElasticCompletion(
-        `Translate this support response to ${target}. Keep citations like [1] unchanged:\n${input}`,
+        `Translate this customer support response to ${target}. Keep citation markers like [1], [2] exactly as they are. Return only the translated text:\n${input}`,
       );
       return translated || input;
     };
@@ -71,18 +220,8 @@ export async function POST(req: Request) {
     const citations = await searchSupportKnowledge({
       teamId,
       query: retrievalQuery,
-      size: 4,
+      size: 5,
     });
-
-    const sourceContext =
-      citations.length > 0
-        ? citations
-            .map(
-              (item, idx) =>
-                `[${idx + 1}] ${item.title}\nSnippet: ${item.snippet || "N/A"}\nURL: ${item.url || "N/A"}`,
-            )
-            .join("\n\n")
-        : "No indexed support sources found for this team.";
 
     await createSupportConversationMessage({
       teamId,
@@ -92,9 +231,10 @@ export async function POST(req: Request) {
       sourceRefs: [],
     });
 
+    // No relevant sources found
     if (citations.length === 0) {
       const noSourceReplyBase =
-        "I do not have indexed docs for this workspace yet. Please ask your admin to add docs/website links in Integrations > Arya Knowledge Hub. If you want, I can route you to human support now.";
+        "I'm sorry, I don't have enough information to answer that right now. Would you like me to connect you with our support team? They'll be able to help you directly.";
       const noSourceReply = await maybeTranslateFromEnglish(noSourceReplyBase);
 
       await createSupportConversationMessage({
@@ -121,33 +261,13 @@ export async function POST(req: Request) {
       });
     }
 
+    const sourceContext = buildSourceContext(citations);
+
     const agentId =
-      process.env.ELASTIC_CUSTOMER_AGENT_ID || "zapfeed_customer_support_agent_v1";
-    const agentTimeoutMs = Number(process.env.ELASTIC_AGENT_TIMEOUT_MS || "7000");
+      process.env.ELASTIC_CUSTOMER_AGENT_ID || "omega_customer_support";
+    const agentTimeoutMs = Number(process.env.ELASTIC_AGENT_TIMEOUT_MS || "15000");
 
-      const prompt = `TEAM_ID=${teamId}
-SESSION_ID=${sessionId}
-QUESTION=${retrievalQuery}
-ORIGINAL_LANGUAGE=${language}
-
-Retrieved sources:
-${sourceContext}
-
-Respond in this format:
-## Answer
-<short relevant answer>
-
-## Citations
-- <statement> [1]
-- <statement> [2]
-
-## Need Clarification (only if needed)
-<ask one precise follow-up question when query is ambiguous>
-
-Rules:
-- Use only the provided sources.
-- Keep it concise and relevant.
-- Use [1], [2], ... citations for factual claims.`;
+    const prompt = buildAgentPrompt(retrievalQuery, sourceContext, citations.length);
 
     let conversationId =
       (body?.conversationId as string | null | undefined) || null;
@@ -176,35 +296,40 @@ Rules:
         conversationId;
       finalReply = replyText;
     } catch {
-      const top = citations.slice(0, 2);
-      const bulletLines = top
-        .map(
-          (item, idx) =>
-            `- ${item.snippet || item.title} [${idx + 1}]`,
-        )
-        .join("\n");
-      finalReply = [
-        "## Answer",
-        "I found relevant information from your support docs.",
-        "",
-        "## Citations",
-        bulletLines || "- I found a related source, but details were limited. [1]",
-        "",
-        "## Need Clarification",
-        "Could you share which exact page or feature you're asking about so I can narrow the answer?",
-      ].join("\n");
+      // Agent timed out - use Elastic Completion to generate answer from docs
+      finalReply = await buildFallbackReply(retrievalQuery, citations);
     }
 
     if (!finalReply) {
       finalReply =
-        "I could not generate a response right now. Please try again in a moment.";
+        "I'm having trouble generating a response right now. Could you try rephrasing your question, or would you like to speak with our support team?";
     }
 
+    finalReply = cleanAgentReply(finalReply);
     finalReply = await maybeTranslateFromEnglish(finalReply);
 
     const escalationNeeded =
       dissatisfactionRegex.test(userMessage) ||
-      /could not generate|temporarily unavailable/i.test(finalReply);
+      /having trouble generating|temporarily unavailable/i.test(finalReply);
+
+    // Fire Smart Escalation Workflow in background (non-blocking)
+    if (escalationNeeded) {
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || "http://localhost:3000";
+      fetch(`${baseUrl}/api/workflows/smart-escalation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId,
+          sessionId,
+          reason: dissatisfactionRegex.test(userMessage)
+            ? "user_dissatisfied"
+            : "low_confidence_response",
+          language,
+        }),
+      }).catch(() => {
+        // Workflow fire-and-forget — don't block the chat response
+      });
+    }
 
     await createSupportConversationMessage({
       teamId,
@@ -218,13 +343,15 @@ Rules:
       })),
     });
 
+    const clientCitations = buildClientCitations(citations);
+
     return NextResponse.json({
       success: true,
       data: {
         sessionId,
         conversationId,
         reply: finalReply,
-        citations,
+        citations: clientCitations,
         escalation: {
           suggested: escalationNeeded,
           reason: escalationNeeded ? "user_dissatisfied_or_low_confidence" : null,

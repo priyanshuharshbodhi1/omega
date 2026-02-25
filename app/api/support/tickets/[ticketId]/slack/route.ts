@@ -36,13 +36,13 @@ export async function POST(
 
   try {
     const payload = {
-      text: `Zapfeed support escalation: ${ticket.subject}`,
+      text: `Omega support escalation: ${ticket.subject}`,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Zapfeed Support Escalation*\n*${ticket.subject}*\nStatus: ${ticket.status} | Team: ${ticket.teamId}`,
+            text: `*Omega Support Escalation*\n*${ticket.subject}*\nStatus: ${ticket.status} | Team: ${ticket.teamId}`,
           },
         },
         {

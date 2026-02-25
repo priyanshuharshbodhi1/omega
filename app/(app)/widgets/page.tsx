@@ -79,7 +79,7 @@ export default function Page() {
       form_details_text: "Add more details",
       form_button_text: "Send Feedback",
       widget_mode: "feedback",
-      support_title: "Arya Support Assistant",
+      support_title: "Omega Support Assistant",
       support_subtitle: "Get instant help with citations",
       support_placeholder: "Ask a question about docs, setup, billing...",
     },
@@ -100,7 +100,7 @@ export default function Page() {
     form.setValue("form_details_text", style.form_details_text || "Add more details");
     form.setValue("form_button_text", style.form_button_text || "Send Feedback");
     form.setValue("widget_mode", style.widget_mode || "feedback");
-    form.setValue("support_title", style.support_title || "Arya Support Assistant");
+    form.setValue("support_title", style.support_title || "Omega Support Assistant");
     form.setValue(
       "support_subtitle",
       style.support_subtitle || "Get instant help with citations",
@@ -151,7 +151,7 @@ export default function Page() {
                 <h2 className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
                   Widget Settings
                 </h2>
-                <InfoTip text="Customize your embedded widget appearance and mode (feedback vs Arya support)." />
+                <InfoTip text="Customize your embedded widget appearance and mode (feedback vs Omega support)." />
               </div>
             </CardHeader>
             <CardContent className="pt-6">
@@ -315,7 +315,7 @@ export default function Page() {
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
                           Widget mode
-                          <InfoTip text="Feedback shows rating form; Customer Support Agent shows Arya chat widget." />
+                          <InfoTip text="Feedback shows rating form; Customer Support Agent shows Omega chat widget." />
                         </FormLabel>
                         <FormControl>
                           <Select
@@ -542,7 +542,7 @@ export default function Page() {
                   </div>
                   <div className="bg-[#FFFDF7] h-[210px] p-3">
                     <div className="rounded-xl px-3 py-2 text-sm bg-white border border-[#D2C4B3] text-[#1F1A15] max-w-[85%]">
-                      Hi! I can help using your company&apos;s indexed docs and links. I will cite sources when needed.
+                      Hi! I'm here to help. Ask me anything and I'll find the answer for you.
                     </div>
                   </div>
                   <div className="border-t border-[#D2C4B3] bg-white p-3 flex items-end gap-2">

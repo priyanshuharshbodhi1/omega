@@ -161,7 +161,7 @@ export async function createUser(data: Partial<User>) {
 
 export async function getUserByEmail(email: string) {
   try {
-    const result = await esClient.search({
+    const result: any = await esClient.search({
       index: "users",
       query: {
         match: { email: email.toLowerCase() },
@@ -336,9 +336,12 @@ export async function searchSupportKnowledge(params: {
   const cleanQuery = String(query || "").trim();
   if (!cleanQuery) return [];
 
-  const lexical = await esClient.search({
+  // Run lexical and semantic searches in parallel for hybrid retrieval
+  const queryEmbeddingPromise = getElasticTextEmbedding(cleanQuery);
+
+  const lexicalPromise = esClient.search({
     index: supportDocsIndex,
-    size,
+    size: size * 2,
     query: {
       bool: {
         filter: [{ term: { teamId } }],
@@ -353,20 +356,74 @@ export async function searchSupportKnowledge(params: {
         ],
       },
     },
-    _source: ["title", "url", "contentSnippet", "sourceType", "sourceId", "chunk"],
+    _source: ["title", "url", "contentSnippet", "content", "sourceType", "sourceId", "chunk"],
   });
 
-  return lexical.hits.hits.map((hit) => {
+  const [queryEmbedding, lexical] = await Promise.all([
+    queryEmbeddingPromise,
+    lexicalPromise,
+  ]);
+
+  // Try semantic (KNN) search if embedding is available
+  let semanticHits: any[] = [];
+  if (queryEmbedding) {
+    try {
+      const semantic = await esClient.search({
+        index: supportDocsIndex,
+        size: size * 2,
+        knn: {
+          field: "embedding",
+          query_vector: queryEmbedding,
+          k: size * 2,
+          num_candidates: Math.max(size * 10, 50),
+          filter: { term: { teamId } },
+        },
+        _source: ["title", "url", "contentSnippet", "content", "sourceType", "sourceId", "chunk"],
+      });
+      semanticHits = semantic.hits.hits;
+    } catch {
+      // Fall back to lexical-only if KNN fails
+    }
+  }
+
+  // Reciprocal Rank Fusion (RRF) to merge lexical + semantic results
+  const k = 60; // RRF constant
+  const scoreMap = new Map<string, { score: number; hit: any }>();
+
+  lexical.hits.hits.forEach((hit, rank) => {
+    const id = hit._id!;
+    const rrfScore = 1 / (k + rank + 1);
+    scoreMap.set(id, { score: rrfScore, hit });
+  });
+
+  semanticHits.forEach((hit, rank) => {
+    const id = hit._id!;
+    const rrfScore = 1 / (k + rank + 1);
+    const existing = scoreMap.get(id);
+    if (existing) {
+      existing.score += rrfScore; // Boost docs found by both
+    } else {
+      scoreMap.set(id, { score: rrfScore, hit });
+    }
+  });
+
+  // Sort by combined score and take top N
+  const merged = Array.from(scoreMap.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, size);
+
+  return merged.map(({ hit, score }) => {
     const source = (hit._source as any) || {};
     return {
       id: hit._id,
       title: source.title || "Untitled source",
       url: source.url || null,
       snippet: source.contentSnippet || "",
+      content: source.content || "",
       sourceType: source.sourceType || "text",
       sourceId: source.sourceId || null,
       chunk: source.chunk ?? 0,
-      score: hit._score ?? null,
+      score,
     };
   });
 }
@@ -375,58 +432,108 @@ export async function listSupportKnowledgeSources(params: {
   teamId: string;
   size?: number;
 }) {
-  const { teamId, size = 100 } = params;
-  const result = await esClient.search({
-    index: supportDocsIndex,
-    size,
-    query: {
-      term: { teamId },
-    },
-    sort: [{ updatedAt: "desc" }],
-    _source: [
-      "sourceId",
-      "sourceType",
-      "title",
-      "url",
-      "chunk",
-      "updatedAt",
-      "createdAt",
-    ],
-  });
+  const { teamId, size = 200 } = params;
+  const pageSize = Math.min(Math.max(size, 50), 500);
+  const allSources: Array<{
+    sourceId: string;
+    sourceType: string;
+    title: string;
+    url: string | null;
+    chunks: number;
+    pages: number;
+    updatedAt: string | null;
+  }> = [];
 
-  const grouped = new Map<
-    string,
-    {
-      sourceId: string;
-      sourceType: string;
-      title: string;
-      url: string | null;
-      chunks: number;
-      updatedAt: string | null;
-    }
-  >();
+  let afterKey: Record<string, unknown> | undefined = undefined;
 
-  for (const hit of result.hits.hits) {
-    const source = (hit._source as any) || {};
-    const sourceId = String(source.sourceId || hit._id);
-    const existing = grouped.get(sourceId) || {
-      sourceId,
-      sourceType: String(source.sourceType || "text"),
-      title: String(source.title || "Untitled source"),
-      url: source.url ? String(source.url) : null,
-      chunks: 0,
-      updatedAt: source.updatedAt ? String(source.updatedAt) : null,
-    };
-    existing.chunks += 1;
-    if (source.updatedAt && (!existing.updatedAt || source.updatedAt > existing.updatedAt)) {
-      existing.updatedAt = String(source.updatedAt);
+  while (true) {
+    const result = await esClient.search({
+      index: supportDocsIndex,
+      size: 0,
+      query: {
+        term: { teamId },
+      },
+      aggs: {
+        sources: {
+          composite: {
+            size: pageSize,
+            ...(afterKey ? { after: afterKey } : {}),
+            sources: [
+              {
+                sourceId: {
+                  terms: { field: "sourceId.keyword" },
+                },
+              },
+            ],
+          },
+          aggs: {
+            latest: {
+              top_hits: {
+                size: 1,
+                sort: [{ updatedAt: { order: "desc" } }],
+                _source: ["sourceId", "sourceType", "title", "url", "updatedAt"],
+              },
+            },
+            chunks: {
+              value_count: { field: "chunk" },
+            },
+            pages: {
+              cardinality: { field: "url.keyword" },
+            },
+          },
+        },
+      },
+    });
+
+    const sourcesAgg: any = result?.aggregations?.sources;
+    const buckets = Array.isArray(sourcesAgg?.buckets) ? sourcesAgg.buckets : [];
+
+    for (const bucket of buckets) {
+      const hit = bucket?.latest?.hits?.hits?.[0];
+      const source = (hit?._source as any) || {};
+      const sourceId = String(source.sourceId || bucket?.key?.sourceId || "").trim();
+      if (!sourceId) continue;
+
+      allSources.push({
+        sourceId,
+        sourceType: String(source.sourceType || "text"),
+        title: String(source.title || "Untitled source"),
+        url: source.url ? String(source.url) : null,
+        chunks: Number(bucket?.chunks?.value || 0),
+        pages: Number(bucket?.pages?.value || 0),
+        updatedAt: source.updatedAt ? String(source.updatedAt) : null,
+      });
     }
-    grouped.set(sourceId, existing);
+
+    if (!sourcesAgg?.after_key) {
+      break;
+    }
+    afterKey = sourcesAgg.after_key;
   }
 
-  return Array.from(grouped.values()).sort((a, b) =>
+  return allSources.sort((a, b) =>
     String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
   );
+}
+
+export async function deleteSupportKnowledgeSource(params: {
+  teamId: string;
+  sourceId: string;
+}) {
+  const { teamId, sourceId } = params;
+
+  const result = await esClient.deleteByQuery({
+    index: supportDocsIndex,
+    refresh: true,
+    query: {
+      bool: {
+        filter: [{ term: { teamId } }, { term: { sourceId } }],
+      },
+    },
+  });
+
+  const deleted = Number((result as any)?.deleted || 0);
+  return deleted;
 }
 
 export interface SupportConversationMessage {
@@ -575,7 +682,7 @@ export async function createActionAuditLog(data: {
 export interface SupportTicket {
   id: string;
   teamId: string;
-  source: "arya_escalation" | "manual";
+  source: "omega_escalation" | "manual";
   sessionId?: string | null;
   language?: string | null;
   customerName: string;

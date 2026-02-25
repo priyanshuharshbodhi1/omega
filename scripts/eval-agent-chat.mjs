@@ -4,7 +4,7 @@ dotenv.config();
 
 const kibanaUrl = process.env.ELASTIC_KIBANA_URL;
 const apiKey = process.env.ELASTIC_API_KEY;
-const agentId = process.env.ELASTIC_CHAT_AGENT_ID || "zapfeed_insights_agent_v1";
+const agentId = process.env.ELASTIC_CHAT_AGENT_ID || "omega_insights";
 const teamId = process.env.EVAL_TEAM_ID || "hgl9jjg0uv7";
 
 const questions = [

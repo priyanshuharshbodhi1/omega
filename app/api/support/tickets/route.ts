@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
     const ticket = await createSupportTicket({
       teamId,
-      source: "arya_escalation",
+      source: "omega_escalation",
       sessionId: sessionId || null,
       language,
       customerName,

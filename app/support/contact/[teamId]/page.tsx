@@ -96,7 +96,7 @@ export default function SupportContactPage() {
     <div className="min-h-screen bg-[#F8F1E7] px-4 py-10">
       <div className="mx-auto max-w-2xl rounded-2xl border border-[#D2C4B3] bg-[#FFFDF7] p-6 shadow-[0_16px_40px_rgba(55,40,25,0.12)]">
         <div className="text-[11px] font-bold uppercase tracking-widest text-[#4B3F35]">
-          Arya Escalation Support
+          Omega Escalation Support
         </div>
         <h1 className="mt-2 text-2xl font-semibold text-[#1F1A15]">Contact Human Support</h1>
         <p className="mt-2 text-sm text-[#4B3F35]">

@@ -1,12 +1,13 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Globe2, Loader, SendHorizontal, Settings2, XIcon } from "lucide-react";
+import { Globe2, Loader, SendHorizontal, Settings2, XIcon, MessageSquare } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Transition } from "@headlessui/react";
 import toast from "react-hot-toast";
 import clsx from "clsx";
+import ReactMarkdown from "react-markdown";
 
 type Citation = {
   id: string;
@@ -205,7 +206,7 @@ function SupportWidget({ team }: { team: any }) {
       id: "welcome",
       role: "assistant",
       content:
-        "Hi! I can help using your company's indexed docs and links. I will cite sources when needed.",
+        "Hi! I'm here to help. Ask me anything and I'll find the answer for you.",
       citations: [],
     },
   ]);
@@ -287,7 +288,7 @@ function SupportWidget({ team }: { team: any }) {
   };
 
   return (
-    <div className="absolute bottom-4 right-4 max-w-xs w-full bg-white rounded-2xl border border-[#D2C4B3] overflow-hidden shadow-xl">
+    <div className="absolute bottom-4 right-4 max-w-[350px] w-[95vw] bg-white rounded-2xl border border-[#D2C4B3] overflow-hidden shadow-xl">
       <div
         className="px-4 py-3 flex items-start justify-between"
         style={{ backgroundColor: team?.style?.form_bg, color: team?.style?.form_color }}
@@ -298,7 +299,7 @@ function SupportWidget({ team }: { team: any }) {
           </div>
           <div>
             <h6 className="font-bold text-sm">
-              {team?.style?.support_title || "Arya Support Assistant"}
+              {team?.style?.support_title || "Omega Support Assistant"}
             </h6>
             <p className="text-xs opacity-90">
               {team?.style?.support_subtitle || "Get instant help with citations"}
@@ -310,7 +311,7 @@ function SupportWidget({ team }: { team: any }) {
             onClick={() => setShowSettings((s) => !s)}
             className="p-1 bg-white/40 rounded-full"
             style={{ color: team?.style?.form_bg }}
-            title="Arya language settings"
+            title="Omega language settings"
           >
             <Settings2 className="w-4 h-4" />
           </button>
@@ -352,65 +353,95 @@ function SupportWidget({ team }: { team: any }) {
           >
             <div
               className={clsx(
-                "max-w-[92%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap",
+                "max-w-[92%] rounded-xl px-3 py-2 text-sm",
                 message.role === "user"
-                  ? "bg-[#1F1A15] text-[#FFFDF7]"
+                  ? "bg-[#1F1A15] text-[#FFFDF7] whitespace-pre-wrap"
                   : "bg-white border border-[#D2C4B3] text-[#1F1A15]",
               )}
             >
-              {parseInlineCitations(message.content).map((part, idx) => {
-                if (part.type === "text") {
-                  return <span key={idx}>{part.content}</span>;
-                }
-
-                const citationItem =
-                  message.citations && part.citationId
-                    ? message.citations[part.citationId - 1]
-                    : null;
-
-                if (!citationItem?.url) {
-                  return (
-                    <span key={idx} className="inline-block mx-1 px-1.5 py-0.5 rounded bg-[#E6D8C6] text-[#1F1A15] text-[11px]">
-                      {part.content}
-                    </span>
-                  );
-                }
-
-                return (
-                  <a
-                    key={idx}
-                    href={citationItem.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-block mx-1 px-1.5 py-0.5 rounded bg-[#D2F7D7] text-[#1F1A15] text-[11px] underline"
-                  >
-                    {part.content}
-                  </a>
-                );
-              })}
+              <div className="text-sm prose-sm text-inherit">
+                <ReactMarkdown
+                  components={{
+                  p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                  ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                  ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                  h1: ({ node, ...props }) => <h1 className="text-sm font-bold mt-3 mb-1" {...props} />,
+                  h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-3 mb-1" {...props} />,
+                  h3: ({ node, ...props }) => <h3 className="text-sm font-bold mt-2 mb-1" {...props} />,
+                  a: ({ node, href, children, ...props }) => {
+                    if (href?.startsWith("#citation-no-url")) {
+                      return (
+                        <span className="inline-block mx-1 px-1.5 py-0.5 rounded bg-[#E6D8C6] text-[#1F1A15] text-[11px] font-semibold leading-none no-underline border border-[#D2C4B3]">
+                          {children}
+                        </span>
+                      );
+                    }
+                    if (href?.startsWith("#citation-url-")) {
+                      const actualUrl = href.replace("#citation-url-", "");
+                      return (
+                        <a href={actualUrl} target="_blank" rel="noreferrer" className="inline-block mx-1 px-1.5 py-0.5 rounded bg-[#D2F7D7] text-[#1F1A15] text-[11px] font-semibold underline leading-none border border-[#BDE7C2]" {...props}>
+                          {children}
+                        </a>
+                      );
+                    }
+                    return <a href={href} target="_blank" rel="noreferrer" className="underline font-semibold" {...props}>{children}</a>;
+                  },
+                  code: ({ node, className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const isInline = !match && !String(children).includes("\n");
+                    return isInline ? (
+                      <code className="bg-black/10 rounded px-1 py-0.5 text-[12px]" {...props}>{children}</code>
+                    ) : (
+                      <pre className="block bg-black/10 rounded overflow-x-auto p-2 mb-2 text-[12px]">
+                        <code {...props}>{children}</code>
+                      </pre>
+                    );
+                  }
+                }}
+              >
+                {(() => {
+                  let text = message.content;
+                  if (!message.citations?.length) return text;
+                  return text.replace(/\[(?:Source\s+)?(\d+)\]/gi, (match, id) => {
+                    const citationItem = message.citations![Number(id) - 1];
+                    if (citationItem?.url) {
+                      return `[${match}](#citation-url-${citationItem.url})`;
+                    }
+                    return `[${match}](#citation-no-url)`;
+                  });
+                })()}
+                </ReactMarkdown>
+              </div>
 
               {message.role === "assistant" &&
               message.citations &&
               message.citations.length > 0 ? (
-                <div className="mt-2 pt-2 border-t border-[#E6D8C6] space-y-1">
-                  <p className="text-[10px] uppercase tracking-wide text-[#4B3F35]">
-                    Sources
+                <div className="mt-2 pt-2 border-t border-[#E6D8C6] space-y-1.5">
+                  <p className="text-[10px] uppercase tracking-wide text-[#4B3F35] font-medium">
+                    Sources ({message.citations.length})
                   </p>
                   {message.citations.map((source, idx) => (
-                    <div key={`${message.id}-source-${idx}`} className="text-[11px] leading-snug">
-                      <span className="font-semibold">[{idx + 1}] </span>
-                      {source.url ? (
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline"
-                        >
-                          {source.title}
-                        </a>
-                      ) : (
-                        <span>{source.title}</span>
-                      )}
+                    <div key={`${message.id}-source-${idx}`} className="rounded-md bg-[#F5F0E8] px-2 py-1.5">
+                      <div className="flex items-start gap-1.5">
+                        <span className="shrink-0 inline-flex items-center justify-center size-4 rounded bg-[#D2C4B3] text-[9px] font-bold text-[#4B3F35] mt-0.5">{idx + 1}</span>
+                        <div className="min-w-0">
+                          {source.url ? (
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[11px] font-semibold underline text-[#1F1A15] line-clamp-1 block"
+                            >
+                              {source.title}
+                            </a>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-[#1F1A15] line-clamp-1 block">{source.title}</span>
+                          )}
+                          {source.snippet ? (
+                            <p className="text-[10px] text-[#6B5E50] line-clamp-2 mt-0.5 leading-snug">{source.snippet}</p>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -459,7 +490,7 @@ function SupportWidget({ team }: { team: any }) {
           className="w-full resize-none rounded-lg border border-[#D2C4B3] px-3 py-2 text-sm"
           placeholder={
             team?.style?.support_placeholder ||
-            "Ask Arya about docs, setup, billing..."
+            "Ask Omega about docs, setup, billing..."
           }
         />
         <Button type="button" onClick={handleSend} disabled={loading || !input.trim()}>
@@ -474,6 +505,17 @@ export default function Page() {
   const params = useParams();
   const searchParams = useSearchParams();
   const [team, setTeam] = useState<any>();
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data === "omega-minimized") {
+        setIsMinimized(true);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   useEffect(() => {
     const getTeam = async () => {
@@ -498,11 +540,23 @@ export default function Page() {
   }, [searchParams, team]);
 
   return (
-    <div className="bg-black/70 backdrop-blur-sm inset-0 fixed">
-      {selectedMode === "customer_agent" ? (
-        <SupportWidget team={team} />
-      ) : (
-        <FeedbackWidget team={team} />
+    <div className={clsx("inset-0 fixed transition-all duration-300", isMinimized ? "pointer-events-none bg-transparent" : "bg-black/70 backdrop-blur-sm pointer-events-auto")}>
+      {!isMinimized && (
+        selectedMode === "customer_agent" ? (
+          <SupportWidget team={team} />
+        ) : (
+          <FeedbackWidget team={team} />
+        )
+      )}
+      
+      {isMinimized && (
+        <button 
+          onClick={() => setIsMinimized(false)}
+          className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-2xl flex items-center justify-center pointer-events-auto transition-transform hover:scale-105 active:scale-95 z-[9999]"
+          style={{ backgroundColor: team?.style?.form_bg || '#1F1A15', color: team?.style?.form_color || '#fff' }}
+        >
+          <MessageSquare className="w-6 h-6" />
+        </button>
       )}
     </div>
   );

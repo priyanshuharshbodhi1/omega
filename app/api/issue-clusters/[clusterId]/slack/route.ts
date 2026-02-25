@@ -43,13 +43,13 @@ export async function POST(
 
   try {
     const body = {
-      text: `Zapfeed issue cluster alert: ${cluster.title} (${cluster.count} reports)` ,
+      text: `Omega issue cluster alert: ${cluster.title} (${cluster.count} reports)` ,
       blocks: [
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Zapfeed Issue Cluster*\n*${cluster.title}*\nCount: ${cluster.count}\nStatus: ${cluster.status}`,
+            text: `*Omega Issue Cluster*\n*${cluster.title}*\nCount: ${cluster.count}\nStatus: ${cluster.status}`,
           },
         },
         {
