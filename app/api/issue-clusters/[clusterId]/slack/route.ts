@@ -5,9 +5,11 @@ import {
 } from "@/lib/elasticsearch";
 import { NextResponse } from "next/server";
 
+type RouteParams = { clusterId: string };
+
 export async function POST(
   req: Request,
-  { params }: { params: { clusterId: string } },
+  { params }: { params: RouteParams | Promise<RouteParams> },
 ) {
   const session = await auth();
   if (!session) {
@@ -17,7 +19,8 @@ export async function POST(
     );
   }
 
-  const clusterId = decodeURIComponent(params.clusterId);
+  const { clusterId: clusterIdParam } = await Promise.resolve(params);
+  const clusterId = decodeURIComponent(clusterIdParam);
   const cluster = await getIssueClusterById(clusterId);
   if (!cluster) {
     return NextResponse.json(
@@ -42,6 +45,14 @@ export async function POST(
   }
 
   try {
+    const priority = String((cluster as any).priority || "medium").toUpperCase();
+    const breakdown = (cluster as any).sourceBreakdown || { feedback: 0, support: 0 };
+    const recommendedAction =
+      String((cluster as any).recommendedAction || "Assign owner and investigate impact.");
+    const slackSummary =
+      String((cluster as any).slackSummary || "").trim() ||
+      `[${priority}] ${cluster.title} (${cluster.count} reports)`;
+
     const body = {
       text: `Omega issue cluster alert: ${cluster.title} (${cluster.count} reports)` ,
       blocks: [
@@ -49,14 +60,30 @@ export async function POST(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Omega Issue Cluster*\n*${cluster.title}*\nCount: ${cluster.count}\nStatus: ${cluster.status}`,
+            text: `*Omega Issue Cluster*\n*${cluster.title}*\nPriority: *${priority}*\nCount: ${cluster.count}\nStatus: ${cluster.status}`,
           },
         },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `Sample:\n${(cluster.sampleMessages || []).slice(0, 2).map((m: string) => `• ${m}`).join("\n") || "N/A"}`,
+            text: `Signals: feedback=${breakdown.feedback}, support=${breakdown.support}\nAction: ${recommendedAction}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Slack Brief:\n${slackSummary}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Sample:\n${
+              (cluster.sampleMessages || []).slice(0, 2).map((m: string) => `• ${m}`).join("\n") || "N/A"
+            }`,
           },
         },
       ],

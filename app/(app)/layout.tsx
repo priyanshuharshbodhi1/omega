@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import TopNav from "@/components/ui/top-nav";
+import FloatingActions from "@/components/ui/floating-actions";
 
 export default async function Layout({
   children,
@@ -21,6 +22,8 @@ export default async function Layout({
           {children}
         </div>
       </main>
+
+      <FloatingActions />
     </div>
   );
 }

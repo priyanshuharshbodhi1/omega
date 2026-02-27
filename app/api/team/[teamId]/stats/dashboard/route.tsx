@@ -2,11 +2,13 @@ import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import { esClient, runESQL } from "@/lib/elasticsearch";
 
+type RouteParams = { teamId: string };
+
 export async function GET(
   req: Request,
-  { params }: { params: { teamId: string } },
+  { params }: { params: RouteParams | Promise<RouteParams> },
 ) {
-  const teamId = params.teamId;
+  const { teamId } = await Promise.resolve(params);
 
   const session = await auth();
   if (!session) {

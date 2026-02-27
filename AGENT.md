@@ -1,7 +1,11 @@
-# AGENT.md - Zapfeed Pivot Context (Hackathon)
+# AGENT.md - Omega Pivot Context (Hackathon)
 
 ## Mission
-Win the Elasticsearch Agent Builder Hackathon by pivoting Zapfeed from feedback-only analytics into a lightweight customer support agent platform while preserving existing feedback flows.
+Win the Elasticsearch Agent Builder Hackathon by pivoting Omega from feedback-only analytics into a lightweight customer support agent platform while preserving existing feedback flows.
+
+› Hey remember I want to win tis hackathon: https://
+  elasticsearch.devpost.com/
+ 
 
 ## Product Direction (User-Requested)
 1. Keep existing feedback capability.

@@ -8,6 +8,9 @@ import { NextResponse } from "next/server";
 
 const ISSUE_URL_REGEX = /https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/issues\/\d+/i;
 const ISSUE_NUMBER_REGEX = /\/issues\/(\d+)/i;
+const GITHUB_API_BASE = "https://api.github.com";
+
+type RouteParams = { clusterId: string };
 
 function parseIssueMeta(text: string) {
   const issueUrl = text.match(ISSUE_URL_REGEX)?.[0] || null;
@@ -21,9 +24,57 @@ function parseIssueMeta(text: string) {
   };
 }
 
+async function createIssueDirectly(params: {
+  owner: string;
+  repo: string;
+  title: string;
+  body: string;
+  githubToken: string;
+}) {
+  const response = await fetch(
+    `${GITHUB_API_BASE}/repos/${params.owner}/${params.repo}/issues`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.githubToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({
+        title: params.title,
+        body: params.body,
+        labels: ["customer-feedback", "clustered-issue"],
+      }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `GitHub API failed (${response.status}): ${errorText.slice(0, 220)}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    html_url?: string;
+    number?: number;
+  };
+
+  return {
+    issueUrl: String(data.html_url || ""),
+    issueNumber:
+      typeof data.number === "number" && Number.isFinite(data.number)
+        ? data.number
+        : null,
+    provider: "github_api",
+  };
+}
+
 export async function POST(
   req: Request,
-  { params }: { params: { clusterId: string } },
+  { params }: { params: RouteParams | Promise<RouteParams> },
 ) {
   const session = await auth();
   if (!session) {
@@ -33,7 +84,8 @@ export async function POST(
     );
   }
 
-  const clusterId = decodeURIComponent(params.clusterId);
+  const { clusterId: clusterIdParam } = await Promise.resolve(params);
+  const clusterId = decodeURIComponent(clusterIdParam);
   const cluster = await getIssueClusterById(clusterId);
   if (!cluster) {
     return NextResponse.json(
@@ -86,36 +138,54 @@ export async function POST(
       "- Provide mitigation + ETA",
     ].join("\n");
 
-    const prompt = [
-      `Use the workflow tool \`${workflowToolId}\` exactly once.`,
-      "Do not ask follow-up questions.",
-      "Create a GitHub issue with these exact values:",
-      `- owner: ${owner}`,
-      `- repo: ${repo}`,
-      `- title: ${title}`,
-      `- body: ${issueBody}`,
-      "- labels: [\"customer-feedback\",\"clustered-issue\"]",
-      ...(githubToken ? [`- github_token: ${githubToken}`] : []),
-      "",
-      "After creating, respond with:",
-      "1) The issue URL",
-      "2) The issue number",
-    ].join("\n");
+    let issueUrl: string | null = null;
+    let issueNumber: number | null = null;
+    let provider = "agent_workflow";
 
-    const response = await invokeAgent({
-      agentId,
-      message: prompt,
-    });
+    if (githubToken) {
+      const directResult = await createIssueDirectly({
+        owner,
+        repo,
+        title,
+        body: issueBody,
+        githubToken,
+      });
+      issueUrl = directResult.issueUrl;
+      issueNumber = directResult.issueNumber;
+      provider = directResult.provider;
+    } else {
+      const prompt = [
+        `Use the workflow tool \`${workflowToolId}\` exactly once.`,
+        "Do not ask follow-up questions.",
+        "Create a GitHub issue with these exact values:",
+        `- owner: ${owner}`,
+        `- repo: ${repo}`,
+        `- title: ${title}`,
+        `- body: ${issueBody}`,
+        "- labels: [\"customer-feedback\",\"clustered-issue\"]",
+        "",
+        "After creating, respond with:",
+        "1) The issue URL",
+        "2) The issue number",
+      ].join("\n");
 
-    const agentMessage = String(
-      response?.response?.message || response?.message || "",
-    );
-    const { issueUrl, issueNumber } = parseIssueMeta(
-      `${agentMessage}\n${JSON.stringify(response || {})}`,
-    );
+      const response = await invokeAgent({
+        agentId,
+        message: prompt,
+      });
+
+      const agentMessage = String(
+        response?.response?.message || response?.message || "",
+      );
+      const parsed = parseIssueMeta(
+        `${agentMessage}\n${JSON.stringify(response || {})}`,
+      );
+      issueUrl = parsed.issueUrl;
+      issueNumber = parsed.issueNumber;
+    }
 
     if (!issueUrl) {
-      throw new Error("Agent responded but GitHub issue URL was not found.");
+      throw new Error("Issue creation succeeded but GitHub issue URL was not returned.");
     }
 
     await createActionAuditLog({
@@ -129,10 +199,14 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "GitHub issue created via workflow tool.",
+      message:
+        provider === "github_api"
+          ? "GitHub issue created."
+          : "GitHub issue created via workflow tool.",
       data: {
         issueUrl,
         issueNumber,
+        provider,
         agentId,
         workflowToolId,
       },

@@ -6,9 +6,11 @@ import {
 } from "@/lib/elasticsearch";
 import { NextResponse } from "next/server";
 
+type RouteParams = { clusterId: string };
+
 export async function POST(
   req: Request,
-  { params }: { params: { clusterId: string } },
+  { params }: { params: RouteParams | Promise<RouteParams> },
 ) {
   const session = await auth();
   if (!session) {
@@ -18,7 +20,8 @@ export async function POST(
     );
   }
 
-  const clusterId = decodeURIComponent(params.clusterId);
+  const { clusterId: clusterIdParam } = await Promise.resolve(params);
+  const clusterId = decodeURIComponent(clusterIdParam);
   const cluster = await getIssueClusterById(clusterId);
   if (!cluster) {
     return NextResponse.json(

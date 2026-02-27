@@ -4,6 +4,9 @@ export const authConfig = {
   providers: [], // Providers will be added in auth.ts to avoid Edge Runtime issues
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
+  pages: {
+    signIn: "/login",
+  },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;

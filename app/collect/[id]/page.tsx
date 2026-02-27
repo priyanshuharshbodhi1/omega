@@ -31,6 +31,11 @@ type SupportMessage = {
   content: string;
   citations?: Citation[];
   supportContactUrl?: string | null;
+  showTalkToAgent?: boolean;
+  escalationReason?: string | null;
+  escalationQuestion?: string | null;
+  escalationAnswer?: string | null;
+  escalationTicketId?: string | null;
   assistantMessageId?: string | null;
   confidenceScore?: number | null;
   followUpQuestions?: string[];
@@ -46,6 +51,22 @@ const ARYA_LANGUAGES = [
   { value: "hi", label: "Hindi" },
   { value: "ar", label: "Arabic" },
 ];
+
+const CUSTOMER_AGENT_EMAIL = "priyanshu.admin@slack.com";
+
+function buildGmailComposeLink(params: {
+  to: string;
+  subject: string;
+  body: string;
+}) {
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(params.to)}&su=${encodeURIComponent(params.subject)}&body=${encodeURIComponent(params.body)}`;
+}
+
+function buildPseudoCustomerEmail(sessionId: string) {
+  const safeToken = sessionId.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 24);
+  const localPart = safeToken || "aryauser";
+  return `${localPart}@arya-widget.zapfeed.ai`;
+}
 
 function parseInlineCitations(text: string): Array<{
   type: "text" | "citation";
@@ -229,6 +250,7 @@ function SupportWidget({ team }: { team: any }) {
   const [detectedLang, setDetectedLang] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [csatLoadingMessageId, setCsatLoadingMessageId] = useState<string | null>(null);
+  const [escalatingMessageId, setEscalatingMessageId] = useState<string | null>(null);
   const [sessionId] = useState(
     () => `widget-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
@@ -291,14 +313,26 @@ function SupportWidget({ team }: { team: any }) {
       };
       const escalation = result?.data?.escalation;
       const nextMessages = [assistantMessage];
-      if (escalation?.suggested && escalation?.contactUrl) {
+      if (escalation?.suggested) {
+        const escalationReason = String(escalation?.reason || "");
+        const escalationContent =
+          escalationReason === "user_requested_human_support"
+            ? "I can connect you to a customer agent right now."
+            : "If this did not solve your issue, you can talk directly to our customer agent.";
+
         nextMessages.push({
           id: `${Date.now()}-escalate`,
           role: "assistant",
-          content:
-            "If this does not fully solve your issue, contact human support and share full details.",
+          content: escalationContent,
           citations: [],
-          supportContactUrl: String(escalation.contactUrl),
+          supportContactUrl: escalation?.contactUrl
+            ? String(escalation.contactUrl)
+            : null,
+          showTalkToAgent: true,
+          escalationReason: escalationReason || "user_dissatisfied_or_low_confidence",
+          escalationQuestion: questionToSend,
+          escalationAnswer: assistantMessage.content,
+          escalationTicketId: null,
         });
       }
 
@@ -361,6 +395,96 @@ function SupportWidget({ team }: { team: any }) {
       toast.error(error?.message || "Could not save your rating.");
     } finally {
       setCsatLoadingMessageId(null);
+    }
+  };
+
+  const handleTalkToCustomerAgent = async (messageId: string) => {
+    if (!teamId || escalatingMessageId) return;
+    const escalationMessage = messages.find((message) => message.id === messageId);
+    if (!escalationMessage) return;
+
+    setEscalatingMessageId(messageId);
+
+    try {
+      let ticketId = escalationMessage.escalationTicketId || null;
+      const ticketSubject = `Arya dissatisfaction escalation (${teamId})`;
+      const ticketDescription = [
+        "User requested to talk to a customer agent from Arya widget.",
+        "",
+        `Team ID: ${teamId}`,
+        `Session ID: ${sessionId}`,
+        `Language: ${detectedLang || (language === "auto" ? "en" : language)}`,
+        `Reason: ${escalationMessage.escalationReason || "user_dissatisfied_or_low_confidence"}`,
+        "",
+        "Latest user query:",
+        escalationMessage.escalationQuestion || "N/A",
+        "",
+        "Latest Arya response:",
+        escalationMessage.escalationAnswer || "N/A",
+      ].join("\n");
+
+      if (!ticketId) {
+        const response = await fetch("/api/support/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teamId,
+            sessionId,
+            language: detectedLang || (language === "auto" ? "en" : language),
+            source: "arya_dissatisfied",
+            customerName: "Arya Widget User",
+            customerEmail: buildPseudoCustomerEmail(sessionId),
+            subject: ticketSubject,
+            description: ticketDescription,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.message || "Failed to submit escalation request.");
+        }
+
+        ticketId = String(data?.data?.ticketId || "").trim();
+        if (!ticketId) {
+          throw new Error("Escalation saved but ticket ID is missing.");
+        }
+
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === messageId
+              ? { ...message, escalationTicketId: ticketId }
+              : message,
+          ),
+        );
+      }
+
+      const gmailBody = [
+        `Ticket ID: ${ticketId || "N/A"}`,
+        `Team ID: ${teamId}`,
+        `Session ID: ${sessionId}`,
+        `Reason: ${escalationMessage.escalationReason || "user_dissatisfied_or_low_confidence"}`,
+        "",
+        "Latest user query:",
+        escalationMessage.escalationQuestion || "N/A",
+        "",
+        "Latest Arya response:",
+        escalationMessage.escalationAnswer || "N/A",
+      ].join("\n");
+
+      const gmailLink = buildGmailComposeLink({
+        to: CUSTOMER_AGENT_EMAIL,
+        subject: ticketSubject,
+        body: gmailBody,
+      });
+      const openedWindow = window.open(gmailLink, "_blank", "noopener,noreferrer");
+      if (!openedWindow) {
+        window.location.href = gmailLink;
+      }
+
+      toast.success("Escalation queued. Gmail compose opened.");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to connect to a customer agent.");
+    } finally {
+      setEscalatingMessageId(null);
     }
   };
 
@@ -596,16 +720,31 @@ function SupportWidget({ team }: { team: any }) {
                 </div>
               ) : null}
 
-              {message.role === "assistant" && message.supportContactUrl ? (
+              {message.role === "assistant" && message.showTalkToAgent ? (
                 <div className="mt-3">
-                  <a
-                    href={message.supportContactUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center rounded-full bg-[#1F1A15] text-[#FFFDF7] text-[11px] px-3 py-1.5"
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="dark"
+                    onClick={() => handleTalkToCustomerAgent(message.id)}
+                    disabled={escalatingMessageId === message.id}
+                    className="rounded-full text-[11px]"
                   >
-                    Contact Human Support
-                  </a>
+                    {escalatingMessageId === message.id
+                      ? "Connecting..."
+                      : "Talk to Customer Agent"}
+                  </Button>
+
+                  {message.supportContactUrl ? (
+                    <a
+                      href={message.supportContactUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center ml-2 rounded-full border border-[#D2C4B3] bg-white text-[#1F1A15] text-[11px] px-3 py-1.5"
+                    >
+                      Open Support Form
+                    </a>
+                  ) : null}
                 </div>
               ) : null}
             </div>

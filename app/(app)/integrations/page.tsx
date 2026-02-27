@@ -134,12 +134,18 @@ export default function Dashboard() {
   const loadSources = useCallback(async () => {
     if (!team?.id) return;
     try {
-      const response = await fetch(`/api/support/sources?teamId=${team.id}`);
-      const data = await response.json();
+      const response = await fetch(`/api/support/sources?teamId=${team.id}`, {
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
       if (response.ok && data.success) {
         setIndexedSources(data.data || []);
+        return;
       }
-    } catch {}
+      toast.error(data?.message || "Failed to load indexed sources.");
+    } catch {
+      toast.error("Failed to load indexed sources.");
+    }
   }, [team?.id]);
 
   useEffect(() => {
@@ -600,7 +606,10 @@ export default function Dashboard() {
                 </div>
                 <h3 className="text-lg font-semibold text-[#1F1A15] mt-1">What Omega currently knows</h3>
               </div>
-              <Button variant="dark" size="sm" onClick={loadSources}>Refresh</Button>
+              <div className="flex items-center gap-2">
+                <Button variant="dark" size="sm" onClick={loadSources}>Refresh</Button>
+                <InfoTip text="Sync the latest indexed knowledge sources from the server." />
+              </div>
             </div>
 
             {indexedSources.length === 0 ? (

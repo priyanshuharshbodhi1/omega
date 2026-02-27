@@ -26,13 +26,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <SessionProvider>
-      <html lang="en" className={`${spaceGrotesk.variable} ${fraunces.variable}`}>
-        <body className="antialiased font-sans">
+    <html lang="en" className={`${spaceGrotesk.variable} ${fraunces.variable}`}>
+      <body className="antialiased font-sans">
+        <SessionProvider>
           {children}
           <Toaster />
-        </body>
-      </html>
-    </SessionProvider>
+        </SessionProvider>
+      </body>
+    </html>
   );
 }

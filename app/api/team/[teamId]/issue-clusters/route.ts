@@ -2,9 +2,11 @@ import { auth } from "@/auth";
 import { getTeam, listIssueClusters } from "@/lib/elasticsearch";
 import { NextResponse } from "next/server";
 
+type RouteParams = { teamId: string };
+
 export async function GET(
   req: Request,
-  { params }: { params: { teamId: string } },
+  { params }: { params: RouteParams | Promise<RouteParams> },
 ) {
   const session = await auth();
   if (!session) {
@@ -14,7 +16,7 @@ export async function GET(
     );
   }
 
-  const teamId = params.teamId;
+  const { teamId } = await Promise.resolve(params);
   const team = await getTeam(teamId);
   if (!team) {
     return NextResponse.json(
@@ -24,7 +26,15 @@ export async function GET(
   }
 
   try {
-    const clusters = await listIssueClusters(teamId, 30);
+    const clusters = (await listIssueClusters(teamId, 60))
+      .filter((cluster: any) => {
+        const status = String(cluster?.status || "open");
+        const clusterKey = String(cluster?.clusterKey || "");
+        const count = Number(cluster?.count || 0);
+        return status !== "closed" && clusterKey !== "other" && count > 0;
+      })
+      .slice(0, 30);
+
     return NextResponse.json({ success: true, data: clusters });
   } catch (error: any) {
     return NextResponse.json(

@@ -2,6 +2,8 @@ import { auth } from "@/auth";
 import { getTeam, listSupportTickets } from "@/lib/elasticsearch";
 import { NextResponse } from "next/server";
 
+const ALLOWED_SOURCES = new Set(["omega_escalation", "manual", "arya_dissatisfied"]);
+
 export async function GET(
   req: Request,
   { params }: { params: { teamId: string } },
@@ -24,7 +26,15 @@ export async function GET(
   }
 
   try {
-    const tickets = await listSupportTickets({ teamId, size: 200 });
+    const requestUrl = new URL(req.url);
+    const sourceParam = String(requestUrl.searchParams.get("source") || "")
+      .trim()
+      .toLowerCase();
+    const source = ALLOWED_SOURCES.has(sourceParam)
+      ? (sourceParam as "omega_escalation" | "manual" | "arya_dissatisfied")
+      : undefined;
+
+    const tickets = await listSupportTickets({ teamId, size: 200, source });
     return NextResponse.json({ success: true, data: tickets });
   } catch (error: any) {
     return NextResponse.json(

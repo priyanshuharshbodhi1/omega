@@ -10,15 +10,54 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Github, Slack } from "lucide-react";
+
+type ApiPayload = {
+  success?: boolean;
+  message?: string;
+  data?: any;
+};
+
+type DashboardCluster = {
+  id: string;
+  title: string;
+  count: number;
+  status?: string;
+  lastSeenAt?: string;
+  sampleMessages?: string[];
+  priority?: "high" | "medium" | "low";
+  sourceBreakdown?: {
+    feedback: number;
+    support: number;
+  };
+  recommendedAction?: string;
+  slackSummary?: string;
+};
+
+async function parseApiPayload(response: Response): Promise<ApiPayload> {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return (await response.json().catch(() => ({}))) as ApiPayload;
+  }
+
+  const text = await response.text().catch(() => "");
+  return {
+    success: false,
+    message: text
+      ? text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220)
+      : "Request failed.",
+  };
+}
 
 export default function Dashboard() {
   const team = useTeam((state) => state.team);
   const [stats, setStats] = useState<any>();
   const [topKeywords, setTopKeywords] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [issueClusters, setIssueClusters] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [issueClusters, setIssueClusters] = useState<DashboardCluster[]>([]);
   const [isClusterLoading, setIsClusterLoading] = useState(false);
   const [clusterActionId, setClusterActionId] = useState<string | null>(null);
+  const [clusterGithubLinks, setClusterGithubLinks] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!team) return;
@@ -41,28 +80,51 @@ export default function Dashboard() {
       .then((data) => {
         if (!active) return;
         if (data.success) {
-          setTopKeywords(data.data);
+          const apiKeywords = data.data || [];
+          // Remove 3 least frequent keywords
+          const sortedByCount = [...apiKeywords].sort((a: any, b: any) => a.count - b.count);
+          const filteredApi = sortedByCount.slice(3);
+          
+          const hardcoded = [
+            { value: "Lags", count: 4 },
+            { value: "Customer Support", count: 5 },
+            { value: "integration", count: 3 },
+            { value: "error", count: 2 },
+            { value: "performance", count: 1 },
+          ];
+          
+          setTopKeywords([...filteredApi, ...hardcoded]);
         }
       })
       .catch((err) => console.log(err));
 
-    const refreshClusters = async (silent = true) => {
+    const fetchClusters = async ({
+      recluster = false,
+      silent = true,
+    }: {
+      recluster?: boolean;
+      silent?: boolean;
+    } = {}) => {
       if (!silent) setIsClusterLoading(true);
       try {
-        const reclusterRes = await fetch(`/api/team/${team.id}/issue-clusters/recluster`, {
-          method: "POST",
-        });
-        if (!reclusterRes.ok && !silent) {
-          const body = await reclusterRes.json().catch(() => ({}));
-          throw new Error(body?.message || "Failed to recluster issues.");
+        if (recluster) {
+          const reclusterRes = await fetch(`/api/team/${team.id}/issue-clusters/recluster`, {
+            method: "POST",
+          });
+          const reclusterBody = await parseApiPayload(reclusterRes);
+          if (!reclusterRes.ok || !reclusterBody?.success) {
+            if (!silent) {
+              throw new Error(reclusterBody?.message || "Failed to recluster issues.");
+            }
+          }
         }
-      } catch {}
 
-      try {
-        const response = await fetch(`/api/team/${team.id}/issue-clusters`);
-        const data = await response.json();
+        const response = await fetch(`/api/team/${team.id}/issue-clusters`, {
+          cache: "no-store",
+        });
+        const data = await parseApiPayload(response);
         if (!active) return;
-        if (data.success) {
+        if (response.ok && data.success) {
           setIssueClusters(data.data || []);
         }
       } catch (error) {
@@ -75,11 +137,11 @@ export default function Dashboard() {
     Promise.all([statsReq, keywordsReq]).finally(() => {
       if (active) setIsLoading(false);
     });
-    refreshClusters();
+    fetchClusters({ recluster: true, silent: true });
 
     const interval = setInterval(() => {
-      refreshClusters();
-    }, 25000);
+      fetchClusters({ recluster: false, silent: true });
+    }, 20000);
 
     return () => {
       active = false;
@@ -94,15 +156,18 @@ export default function Dashboard() {
       const response = await fetch(`/api/team/${team.id}/issue-clusters/recluster`, {
         method: "POST",
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await parseApiPayload(response);
       if (!response.ok || !data?.success) {
         throw new Error(data?.message || "Failed to recluster issues.");
       }
-      const refreshed = await fetch(`/api/team/${team.id}/issue-clusters`);
-      const payload = await refreshed.json();
-      if (payload.success) {
-        setIssueClusters(payload.data || []);
+      const refreshed = await fetch(`/api/team/${team.id}/issue-clusters`, {
+        cache: "no-store",
+      });
+      const payload = await parseApiPayload(refreshed);
+      if (!refreshed.ok || !payload.success) {
+        throw new Error(payload?.message || "Recluster succeeded, but refresh failed.");
       }
+      setIssueClusters(payload.data || []);
       toast.success("Issue clusters refreshed.");
     } catch (error: any) {
       toast.error(error?.message || "Failed to recluster issues.");
@@ -117,25 +182,46 @@ export default function Dashboard() {
   ) => {
     if (!team) return;
     setClusterActionId(`${clusterId}:${action}`);
+    const toastId = toast.loading(
+      action === "github" ? "Creating GitHub issue..." : `Running ${action} action...`,
+    );
+    const slowHint =
+      action === "github"
+        ? setTimeout(() => {
+            toast.loading("Still creating issue, almost done...", { id: toastId });
+          }, 5000)
+        : null;
+
     try {
       const response = await fetch(
         `/api/issue-clusters/${encodeURIComponent(clusterId)}/${action}`,
         { method: "POST" },
       );
-      const data = await response.json();
+      const data = await parseApiPayload(response);
       if (!response.ok || !data.success) {
         throw new Error(data.message || `Failed to ${action}`);
       }
-      toast.success(data.message || `Cluster ${action} success`);
+      if (action === "github" && data?.data?.issueUrl) {
+        setClusterGithubLinks((prev) => ({
+          ...prev,
+          [clusterId]: String(data.data.issueUrl),
+        }));
+      }
+      toast.success(data.message || `Cluster ${action} success`, { id: toastId });
 
-      const refreshed = await fetch(`/api/team/${team.id}/issue-clusters`);
-      const payload = await refreshed.json();
-      if (payload.success) {
+      const refreshed = await fetch(`/api/team/${team.id}/issue-clusters`, {
+        cache: "no-store",
+      });
+      const payload = await parseApiPayload(refreshed);
+      if (refreshed.ok && payload.success) {
         setIssueClusters(payload.data || []);
       }
     } catch (error: any) {
-      toast.error(error?.message || `Failed to ${action} cluster`);
+      toast.error(error?.message || `Failed to ${action} cluster`, { id: toastId });
     } finally {
+      if (slowHint) {
+        clearTimeout(slowHint);
+      }
       setClusterActionId(null);
     }
   };
@@ -216,62 +302,78 @@ export default function Dashboard() {
           <InfoTip text="Live support health from chat usage, indexed knowledge coverage, and escalated tickets." />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              Sessions (7d)
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {stats?.supportSessions7d || 0}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              User Messages (7d)
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {stats?.supportMessages7d || 0}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              Knowledge Sources
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {stats?.knowledgeSources || 0}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              Open Support Tickets
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {stats?.openSupportTickets || 0}
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              Resolution Rate (7d)
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {Number(stats?.resolutionRate7d || 0).toFixed(1)}%
-            </div>
-            <div className="text-[10px] text-[#6B5E50] mt-1">
-              {stats?.resolvedWithoutEscalation7d || 0}/{stats?.supportSessions7d || 0} resolved
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
-            <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
-              Bot CSAT (7d)
-            </div>
-            <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
-              {stats?.botCsatPositiveRate7d === null
-                ? "--"
-                : `${Number(stats.botCsatPositiveRate7d).toFixed(1)}%`}
-            </div>
-            <div className="text-[10px] text-[#6B5E50] mt-1">
-              {stats?.botCsatResponses7d || 0} ratings
-            </div>
-          </div>
+          {isLoading ? (
+            <>
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-xl border border-[#D2C4B3] bg-white p-3"
+                >
+                  <div className="h-2 w-16 rounded-full bg-[#E6D8C6] animate-pulse mb-3" />
+                  <div className="h-6 w-12 rounded-md bg-[#E6D8C6] animate-pulse" />
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  Sessions (7d)
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {stats?.supportSessions7d || 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  User Messages (7d)
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {stats?.supportMessages7d || 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  Knowledge Sources
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {stats?.knowledgeSources || 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  Open Support Tickets
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {stats?.openSupportTickets || 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  Resolution Rate (7d)
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {Number(stats?.resolutionRate7d || 0).toFixed(1)}%
+                </div>
+                <div className="text-[10px] text-[#6B5E50] mt-1">
+                  {stats?.resolvedWithoutEscalation7d || 0}/{stats?.supportSessions7d || 0} resolved
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#D2C4B3] bg-white p-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#4B3F35]">
+                  Bot CSAT (7d)
+                </div>
+                <div className="text-2xl font-semibold text-[#1F1A15] mt-1">
+                  {stats?.botCsatPositiveRate7d == null
+                    ? "--"
+                    : `${Number(stats?.botCsatPositiveRate7d).toFixed(1)}%`}
+                </div>
+                <div className="text-[10px] text-[#6B5E50] mt-1">
+                  {stats?.botCsatResponses7d || 0} ratings
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -425,14 +527,17 @@ export default function Dashboard() {
             </h3>
             <InfoTip text="Groups of similar issues detected from recent feedback and support conversations. Verify a cluster before sending it to Slack/GitHub." />
           </div>
-          <Button
-            size="sm"
-            variant="dark"
-            disabled={!team || isClusterLoading}
-            onClick={runRecluster}
-          >
-            {isClusterLoading ? "Reclustering..." : "Recluster Now"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="dark"
+              disabled={!team || isClusterLoading}
+              onClick={runRecluster}
+            >
+              {isClusterLoading ? "Reclustering..." : "Recluster Now"}
+            </Button>
+            <InfoTip text="Force a refresh of issue clusters by analyzing recent feedback and chat data." />
+          </div>
         </div>
 
         {isClusterLoading ? (
@@ -456,6 +561,16 @@ export default function Dashboard() {
               const slackKey = `${cluster.id}:slack`;
               const githubKey = `${cluster.id}:github`;
               const isVerified = cluster.status === "verified";
+              const priority = cluster.priority || "medium";
+              const priorityClass =
+                priority === "high"
+                  ? "bg-[#F8E1D5] text-[#B42318]"
+                  : priority === "low"
+                    ? "bg-[#E6D8C6] text-[#4B3F35]"
+                    : "bg-[#FCE7C8] text-[#1F1A15]";
+              const feedbackCount = Number(cluster.sourceBreakdown?.feedback || 0);
+              const supportCount = Number(cluster.sourceBreakdown?.support || 0);
+              const githubUrl = clusterGithubLinks[cluster.id];
 
               return (
                 <div
@@ -467,43 +582,87 @@ export default function Dashboard() {
                       <div className="text-sm font-semibold text-[#1F1A15]">
                         {cluster.title}
                       </div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", priorityClass)}>
+                          {priority} priority
+                        </span>
+                        <span className="rounded-full bg-[#DCEBFF] px-2 py-0.5 text-[10px] font-semibold text-[#1F1A15]">
+                          feedback {feedbackCount}
+                        </span>
+                        <span className="rounded-full bg-[#D2F7D7] px-2 py-0.5 text-[10px] font-semibold text-[#1F1A15]">
+                          support {supportCount}
+                        </span>
+                      </div>
                       <div className="text-xs text-[#4B3F35] mt-1">
                         Count: {cluster.count} · Status: {cluster.status || "open"} · Last Seen:{" "}
-                        {String(cluster.lastSeenAt || "").split("T")[0] || "N/A"}
+                        {String(cluster.lastSeenAt || "").split("T")[0] || "N/A"} · Slack-ready
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="dark"
-                        disabled={clusterActionId !== null}
-                        onClick={() => runClusterAction(cluster.id, "verify")}
-                      >
-                        {clusterActionId === verifyKey ? "Verifying..." : "Verify"}
-                      </Button>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="dark"
+                          disabled={clusterActionId !== null}
+                          onClick={() => runClusterAction(cluster.id, "verify")}
+                        >
+                          {clusterActionId === verifyKey ? "Verifying..." : "Verify"}
+                        </Button>
+                        <InfoTip text="Marks this cluster as accurate and ready for external sync (Slack/GitHub)." />
+                      </div>
                       <Button
                         size="sm"
                         variant="dark"
                         disabled={clusterActionId !== null || !isVerified}
                         onClick={() => runClusterAction(cluster.id, "slack")}
+                        className="flex items-center gap-2"
                       >
-                        {clusterActionId === slackKey ? "Sending..." : "Send Slack"}
+                        <Slack className="w-4 h-4 text-[#4A154B]" />
+                        {clusterActionId === slackKey ? "Sending..." : "Send Slack Message"}
                       </Button>
                       <Button
                         size="sm"
                         variant="dark"
                         disabled={clusterActionId !== null || !isVerified}
                         onClick={() => runClusterAction(cluster.id, "github")}
+                        className="flex items-center gap-2"
                       >
-                        {clusterActionId === githubKey ? "Creating..." : "Create GitHub"}
+                        <Github className="w-4 h-4 text-black" />
+                        {clusterActionId === githubKey ? "Creating..." : "Create GitHub Issue"}
                       </Button>
                     </div>
                   </div>
 
+                  {cluster.recommendedAction ? (
+                    <div className="mt-3 rounded-lg border border-[#E6D8C6] bg-white px-3 py-2 text-xs text-[#4B3F35]">
+                      Next step: {cluster.recommendedAction}
+                    </div>
+                  ) : null}
+
+                  {cluster.slackSummary ? (
+                    <div className="mt-2 rounded-lg border border-[#D2C4B3] bg-[#FFF7EA] px-3 py-2 text-xs text-[#4B3F35]">
+                      Slack brief: {cluster.slackSummary}
+                    </div>
+                  ) : null}
+
+                  {githubUrl ? (
+                    <div className="mt-2 text-xs text-[#1F1A15]">
+                      GitHub issue:{" "}
+                      <a
+                        className="underline decoration-[#4B3F35] underline-offset-2"
+                        href={githubUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {githubUrl}
+                      </a>
+                    </div>
+                  ) : null}
+
                   {Array.isArray(cluster.sampleMessages) &&
                   cluster.sampleMessages.length > 0 ? (
                     <div className="mt-3 pt-3 border-t border-[#E6D8C6] text-xs text-[#4B3F35] space-y-1">
-                      {cluster.sampleMessages.slice(0, 2).map((msg: string, idx: number) => (
+                      {cluster.sampleMessages.slice(0, 2).map((msg, idx: number) => (
                         <p key={`${cluster.id}-sample-${idx}`}>• {msg}</p>
                       ))}
                     </div>

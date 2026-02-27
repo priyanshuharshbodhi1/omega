@@ -2,6 +2,11 @@ import { createSupportTicket, getTeam } from "@/lib/elasticsearch";
 import { NextResponse } from "next/server";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_SOURCES = new Set([
+  "omega_escalation",
+  "manual",
+  "arya_dissatisfied",
+]);
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +19,12 @@ export async function POST(req: Request) {
     const description = String(body?.description || "").trim();
     const sessionId = String(body?.sessionId || "").trim();
     const language = String(body?.language || "en").trim().toLowerCase();
+    const sourceInput = String(body?.source || "omega_escalation")
+      .trim()
+      .toLowerCase();
+    const source = ALLOWED_SOURCES.has(sourceInput)
+      ? (sourceInput as "omega_escalation" | "manual" | "arya_dissatisfied")
+      : "omega_escalation";
     const attachmentName = String(body?.attachmentName || "").trim();
     const attachmentContentType = String(body?.attachmentContentType || "").trim();
     const attachmentDataUrl = String(body?.attachmentDataUrl || "").trim();
@@ -49,7 +60,7 @@ export async function POST(req: Request) {
 
     const ticket = await createSupportTicket({
       teamId,
-      source: "omega_escalation",
+      source,
       sessionId: sessionId || null,
       language,
       customerName,

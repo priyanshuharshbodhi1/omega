@@ -435,87 +435,80 @@ export async function listSupportKnowledgeSources(params: {
   size?: number;
 }) {
   const { teamId, size = 200 } = params;
-  const pageSize = Math.min(Math.max(size, 50), 500);
-  const allSources: Array<{
+  const maxDocsToScan = 10_000;
+
+  const grouped = new Map<string, {
     sourceId: string;
     sourceType: string;
     title: string;
     url: string | null;
     chunks: number;
-    pages: number;
+    pageUrls: Set<string>;
     updatedAt: string | null;
-  }> = [];
+  }>();
 
-  let afterKey: Record<string, unknown> | undefined = undefined;
+  const result: any = await esClient.search({
+    index: supportDocsIndex,
+    size: maxDocsToScan,
+    query: {
+      term: { teamId },
+    },
+    sort: [{ updatedAt: { order: "desc" } }],
+    _source: ["sourceId", "sourceType", "title", "url", "updatedAt"],
+  });
 
-  while (true) {
-    const result = await esClient.search({
-      index: supportDocsIndex,
-      size: 0,
-      query: {
-        term: { teamId },
-      },
-      aggs: {
-        sources: {
-          composite: {
-            size: pageSize,
-            ...(afterKey ? { after: afterKey } : {}),
-            sources: [
-              {
-                sourceId: {
-                  terms: { field: "sourceId.keyword" },
-                },
-              },
-            ],
-          },
-          aggs: {
-            latest: {
-              top_hits: {
-                size: 1,
-                sort: [{ updatedAt: { order: "desc" } }],
-                _source: ["sourceId", "sourceType", "title", "url", "updatedAt"],
-              },
-            },
-            chunks: {
-              value_count: { field: "chunk" },
-            },
-            pages: {
-              cardinality: { field: "url.keyword" },
-            },
-          },
-        },
-      },
-    });
+  const hits = Array.isArray(result?.hits?.hits) ? result.hits.hits : [];
+  for (const hit of hits) {
+    const source = (hit?._source as any) || {};
+    const sourceId = String(source.sourceId || "").trim();
+    if (!sourceId) continue;
 
-    const sourcesAgg: any = result?.aggregations?.sources;
-    const buckets = Array.isArray(sourcesAgg?.buckets) ? sourcesAgg.buckets : [];
+    const updatedAt = source.updatedAt ? String(source.updatedAt) : null;
+    const sourceType = String(source.sourceType || "text");
+    const title = String(source.title || "Untitled source");
+    const url = source.url ? String(source.url) : null;
 
-    for (const bucket of buckets) {
-      const hit = bucket?.latest?.hits?.hits?.[0];
-      const source = (hit?._source as any) || {};
-      const sourceId = String(source.sourceId || bucket?.key?.sourceId || "").trim();
-      if (!sourceId) continue;
-
-      allSources.push({
+    const existing = grouped.get(sourceId);
+    if (!existing) {
+      grouped.set(sourceId, {
         sourceId,
-        sourceType: String(source.sourceType || "text"),
-        title: String(source.title || "Untitled source"),
-        url: source.url ? String(source.url) : null,
-        chunks: Number(bucket?.chunks?.value || 0),
-        pages: Number(bucket?.pages?.value || 0),
-        updatedAt: source.updatedAt ? String(source.updatedAt) : null,
+        sourceType,
+        title,
+        url,
+        chunks: 1,
+        pageUrls: new Set(url ? [url] : []),
+        updatedAt,
       });
+      continue;
     }
 
-    if (!sourcesAgg?.after_key) {
-      break;
+    existing.chunks += 1;
+    if (url) {
+      existing.pageUrls.add(url);
     }
-    afterKey = sourcesAgg.after_key;
+
+    if (String(updatedAt || "") > String(existing.updatedAt || "")) {
+      existing.updatedAt = updatedAt;
+      existing.title = title;
+      existing.sourceType = sourceType;
+      existing.url = url;
+    }
   }
 
-  return allSources.sort((a, b) =>
-    String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
-  );
+  return Array.from(grouped.values())
+    .map((item) => ({
+      sourceId: item.sourceId,
+      sourceType: item.sourceType,
+      title: item.title,
+      url: item.url,
+      chunks: item.chunks,
+      pages: item.pageUrls.size,
+      updatedAt: item.updatedAt,
+    }))
+    .sort((a, b) =>
+      String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
+    )
+    .slice(0, size);
 }
 
 export async function deleteSupportKnowledgeSource(params: {
@@ -645,29 +638,61 @@ export async function upsertIssueCluster(data: {
   sampleMessages: string[];
   status?: "open" | "verified" | "closed";
   lastSeenAt?: string;
+  priority?: "high" | "medium" | "low";
+  sourceBreakdown?: {
+    feedback: number;
+    support: number;
+  };
+  impactScore?: number;
+  recommendedAction?: string;
+  slackSummary?: string;
 }) {
   const now = new Date().toISOString();
   const id = `${data.teamId}:${data.clusterKey}`;
-  const doc = {
+  const doc: Record<string, any> = {
     id,
     teamId: data.teamId,
     clusterKey: data.clusterKey,
     title: data.title,
     count: data.count,
     sampleMessages: data.sampleMessages,
-    status: data.status || "open",
     lastSeenAt: data.lastSeenAt || now,
     updatedAt: now,
   };
+  if (data.status) {
+    doc.status = data.status;
+  }
+  if (data.priority) {
+    doc.priority = data.priority;
+  }
+  if (data.sourceBreakdown) {
+    doc.sourceBreakdown = data.sourceBreakdown;
+  }
+  if (typeof data.impactScore === "number") {
+    doc.impactScore = data.impactScore;
+  }
+  if (data.recommendedAction) {
+    doc.recommendedAction = data.recommendedAction;
+  }
+  if (data.slackSummary) {
+    doc.slackSummary = data.slackSummary;
+  }
 
-  await esClient.index({
+  await esClient.update({
     index: issueClustersIndex,
     id,
-    document: doc,
+    doc,
+    upsert: {
+      ...doc,
+      status: data.status || "open",
+    },
     refresh: true,
   });
 
-  return doc;
+  return {
+    ...doc,
+    status: data.status || "open",
+  };
 }
 
 export async function listIssueClusters(teamId: string, size = 20) {
@@ -748,7 +773,7 @@ export async function createActionAuditLog(data: {
 export interface SupportTicket {
   id: string;
   teamId: string;
-  source: "omega_escalation" | "manual";
+  source: "omega_escalation" | "manual" | "arya_dissatisfied";
   sessionId?: string | null;
   language?: string | null;
   customerName: string;
@@ -803,13 +828,20 @@ export async function createSupportTicket(
 export async function listSupportTickets(params: {
   teamId: string;
   size?: number;
+  source?: SupportTicket["source"];
 }) {
-  const { teamId, size = 100 } = params;
+  const { teamId, size = 100, source } = params;
+  const must: any[] = [{ term: { teamId } }];
+  if (source) {
+    must.push({ term: { source } });
+  }
   const result = await esClient.search({
     index: supportTicketsIndex,
     size,
     query: {
-      term: { teamId },
+      bool: {
+        must,
+      },
     },
     sort: [{ createdAt: "desc" }],
   });
