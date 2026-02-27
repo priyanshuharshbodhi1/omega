@@ -27,11 +27,14 @@ document.addEventListener("DOMContentLoaded", function () {
           css.media = "screen";
 
           document.getElementsByTagName("head")[0].appendChild(css);
+          var isSupportMode = widgetMode === "customer_agent";
+          var btnHtml = isSupportMode
+            ? `<a id="omega-btn-open" class="omega-toggle-feedback omega-btn-support" href="javascript:;" style="background: ${dataTeam?.style?.button_bg || '#1F1A15'};color: ${dataTeam?.style?.button_color || '#fff'}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></a>`
+            : `<a id="omega-btn-open" class="omega-toggle-feedback omega-btn-open-${dataTeam?.style?.button_position}" href="javascript:;" style="background: ${dataTeam?.style?.button_bg};color: ${dataTeam?.style?.button_color}">${dataTeam?.style?.button_text}</a>`;
+
           document.body.insertAdjacentHTML(
             "beforeend",
-            `<a id="omega-btn-open" class="omega-toggle-feedback omega-btn-open-${dataTeam?.style?.button_position}" href="javascript:;" style="background: ${dataTeam?.style?.button_bg};color: ${dataTeam?.style?.button_color}">
-            ${dataTeam?.style?.button_text}
-          </a>
+            `${btnHtml}
 
           <div id="omega-frame" class="omega-frame-closed" style="display:none;">
               <iframe allowfullscreen="true" class="omega-frame-embed" title="Omega" role="dialog" src="${collectPath}"></iframe>

@@ -256,6 +256,35 @@ function SupportWidget({ team }: { team: any }) {
   );
   const teamId = String(params?.id || "");
 
+  const DEMO_RESPONSES: Record<string, { reply: string; citations: Citation[]; followUps: string[] }> = {
+    "How do I reset my password?": {
+      reply: `To reset your password, follow these steps:\n\n1. Go to the **login page** and click "Forgot Password" [1]\n2. Enter the email address associated with your account\n3. Check your inbox for a reset link (arrives within 2 minutes)\n4. Click the link and set a new password (minimum 8 characters, must include a number)\n\nIf the email doesn't arrive, check your spam folder. You can also request a new link after 60 seconds. [2]\n\n**Tip:** After resetting, you'll be logged out of all other devices for security.`,
+      citations: [
+        { id: "1", title: "Account Settings - Password Reset", url: "#citation-no-url", snippet: "Navigate to login page and select 'Forgot Password' to begin the reset flow." },
+        { id: "2", title: "Troubleshooting - Email Delivery", url: "#citation-no-url", snippet: "Reset emails are sent immediately. Check spam/junk folders if not received within 2 minutes." },
+      ],
+      followUps: ["Can I change my email address?", "How do I enable two-factor authentication?", "What if I don't receive the reset email?"],
+    },
+    "What payment methods do you accept?": {
+      reply: `We accept the following payment methods:\n\n**Credit & Debit Cards**\n- Visa, Mastercard, American Express [1]\n- All cards are processed securely via Stripe\n\n**Digital Wallets**\n- Apple Pay and Google Pay at checkout\n\n**Other**\n- Bank transfers for annual Enterprise plans\n- PayPal available in supported regions [2]\n\nAll transactions are encrypted with TLS 1.3 and we never store your full card number. Invoices are sent to your email automatically after each payment.`,
+      citations: [
+        { id: "1", title: "Billing - Accepted Payment Methods", url: "#citation-no-url", snippet: "We support Visa, Mastercard, and American Express for all plan types." },
+        { id: "2", title: "Enterprise Billing - Payment Options", url: "#citation-no-url", snippet: "PayPal and bank transfers available for qualifying accounts and regions." },
+      ],
+      followUps: ["How do I update my billing info?", "Do you offer refunds?", "Can I switch to annual billing?"],
+    },
+  };
+
+  const getDemoResponse = (query: string): typeof DEMO_RESPONSES[string] | null => {
+    const q = query.trim().toLowerCase();
+    for (const [key, val] of Object.entries(DEMO_RESPONSES)) {
+      if (q === key.toLowerCase()) return val;
+    }
+    if (q.includes("reset") && q.includes("password")) return DEMO_RESPONSES["How do I reset my password?"];
+    if (q.includes("payment") && (q.includes("method") || q.includes("accept") || q.includes("option"))) return DEMO_RESPONSES["What payment methods do you accept?"];
+    return null;
+  };
+
   const handleSend = async (presetQuestion?: string) => {
     const questionToSend = String(presetQuestion ?? input).trim();
     if (!questionToSend || loading) return;
@@ -270,6 +299,24 @@ function SupportWidget({ team }: { team: any }) {
     }
     setMessages((prev) => [...prev, nextUserMessage]);
     setLoading(true);
+
+    const demoResponse = getDemoResponse(questionToSend);
+    if (demoResponse) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const assistantMessage: SupportMessage = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        content: demoResponse.reply,
+        citations: demoResponse.citations,
+        confidenceScore: 92,
+        followUpQuestions: demoResponse.followUps,
+        csatRating: null,
+        assistantMessageId: `demo-${Date.now()}`,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch("/api/support/chat", {
@@ -552,6 +599,21 @@ function SupportWidget({ team }: { team: any }) {
       ) : null}
 
       <div className="bg-[#FFFDF7] h-[400px] overflow-y-auto p-3 space-y-3">
+        {messages.length === 1 && messages[0].id === "welcome" && (
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {["How do I reset my password?", "What payment methods do you accept?"].map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => handleSend(q)}
+                disabled={loading}
+                className="rounded-full border border-[#D2C4B3] bg-white px-2.5 py-1 text-[11px] text-[#1F1A15] hover:bg-[#F5F0E8] disabled:opacity-60"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         {messages.map((message) => (
           <div
             key={message.id}
