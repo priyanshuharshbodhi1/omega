@@ -97,6 +97,9 @@ Each agent has dedicated ES|QL tools (15 custom + 2 platform) that query Elastic
 
 ![Omega Architecture](generated-diagrams/omega_full_architecture.png.png)
 
+### Technical Deep Dive
+![Technical Architecture](generated-diagrams/omega_technical_deepdive.png.png)
+
 Omega leverages a multi-agent orchestration pattern powered by **Elastic Agent Builder**. The system is composed of specialized agents that interact via a shared Elasticsearch data lake and use natively integrated tools.
 
 ## Technology Stack
