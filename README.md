@@ -1,67 +1,83 @@
 # Omega
 
-[Omega](https://omega.xyz) is a SaaS application designed for business owners to effortlessly collect, analyze, and act on customer feedback using the power of AI. With Omega, you can gain valuable insights into customer sentiments, streamline your feedback processes, and enhance customer satisfaction.
+Omega is a high-performance, open-source SaaS platform designed for business owners to effortlessly collect, analyze, and act on customer feedback using the power of AI. Built with **Next.js** and **Elasticsearch**, Omega consolidates feedback collection, AI-powered support, and deep analytics into a single, cohesive platform.
 
-## Features
+## 🚀 Key Features
 
-- **Intuitive Dashboard**: Visualize your feedback data with metrics like total feedback, sentiment analysis, and trends.
-- **AI-Powered Summaries**: Get instant summaries of feedback and actionable insights.
-- **Customizable Widgets**: Easily integrate feedback collection into your website with customizable widgets.
-- **Effortless Integration**: Embed Omega with a single line of code, direct links, or QR codes.
-- **AI Chat**: Interact with an AI chatbot to analyze feedback data and get insights.
+- **Arya — AI Support Agent**: An intelligent chatbot powered by **Elastic Agent Builder**. Arya retrieves answers using hybrid search (BM25 + KNN + RRF) and provides grounded, cited responses from your indexed knowledge base.
+- **Embedded Integration**: Add AI-powered support and feedback collection to any website with a single line of code. No complex setups required.
+- **Deep Sentiment Analysis**: Every piece of feedback is automatically analyzed for sentiment (positive, neutral, negative) and stored with semantic embeddings.
+- **Issue Clustering**: Similar complaints and feedback are automatically grouped into clusters, helping you identify emerging trends and recurring issues instantly.
+- **ES|QL Powered Dashboard**: Visualize your feedback data with real-time metrics, including sentiment distribution, average ratings, and resolution trends—all powered by native Elasticsearch queries.
+- **Smart Escalation**: When Arya is unsure, it seamlessly suggests escalating to a human agent, ensuring your customers always get the help they need.
 
-## Technologies Used
+## 🛠️ Technology Stack
 
-- **Frontend**: Next.js
-- **Backend**: [TiDB Serverless with Vector Search](https://www.pingcap.com/ai), OpenAI
-- **Styling**: Tailwind CSS
-- **Deployment**: Vercel
+- **Frontend**: Next.js 14 (App Router), Tailwind CSS, Framer Motion
+- **Database/Search**: Elasticsearch (Cloud)
+- **AI Orchestration**: Elastic Agent Builder
+- **Language Models**: OpenAI / Groq / Gemini (via AI SDK)
+- **Authentication**: NextAuth.js with Elasticsearch adapter
 
-## Getting Started
+## 🏗️ Getting Started
 
 ### Prerequisites
 
-Make sure you have the following installed:
-
-- Node.js (version 14.x or later)
-- A [TiDB Serverless with Vector Search](https://www.pingcap.com/ai) account
-- An OpenAI API key
+- Node.js (v18 or later)
+- An [Elastic Cloud](https://cloud.elastic.co) account
+- An OpenAI (or compatible) API key
 
 ### Installation
 
-1. Clone the repository:
-
+1. **Clone the repository**
    ```bash
    git clone https://github.com/priyanshuharshbodhi1/omega.git
    cd omega
    ```
 
-2. Install dependencies:
-
+2. **Install dependencies**
    ```bash
    npm install
    ```
 
-3. Create a .env file in the root directory and add your environment variables:
-
-   ```bash
+3. **Configure Environment Variables**
+   Create a `.env` file in the root directory:
+   ```env
    NEXT_PUBLIC_BASE_URL="http://localhost:3000"
-   AUTH_SECRET=example
-   DATABASE_URL=
-   OPENAI_API_KEY=
+   AUTH_SECRET=your_nextauth_secret
+   ELASTIC_CLOUD_ID=your_elastic_cloud_id
+   ELASTIC_API_KEY=your_elastic_api_key
+   ELASTIC_KIBANA_URL=your_kibana_url
+   OPENAI_API_KEY=your_openai_key
    ```
 
-4. Run prisma migrate dev to create the database schema:
-
+4. **Initialize Database**
    ```bash
    npx prisma generate
-   npx prisma migrate dev
+   # Note: Omega uses an Elasticsearch-first approach for production data. 
+   # Use provided scripts to initialize your ES indices.
    ```
 
-5. Run the development server:
-
+5. **Run the development server**
    ```bash
    npm run dev
    ```
 
-6. Open your browser and navigate to http://localhost:3000.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## 📊 Documentation
+
+- [Migration Plan](MIGRATION_PLAN.md) - Detailed steps for TiDB to Elasticsearch migration.
+- [Hackathon Strategy](HACKATHON_STRATEGY.md) - Our approach for the Elastic Agent Builder Hackathon.
+- [Demo Instructions](public/demo.html) - See how to integrate the Omega widget into any HTML site.
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+Built with ❤️ by the Omega team for the Elasticsearch Agent Builder Hackathon.
