@@ -48,7 +48,7 @@ Product teams query feedback data in natural language. Omega auto-selects the ri
 ![Omega Architecture](generated-diagrams/omega_full_architecture.png.png)
 
 ### Technical Deep Dive
-![Technical Architecture](generated-diagrams/omega_technical_deepdive.png.png)
+![Technical Architecture](generated-diagrams/arc-d.png)
 
 ### Granular System Mapping
 ![Granular Architecture](generated-diagrams/arc-diagram.png)
