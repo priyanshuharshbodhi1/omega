@@ -26,6 +26,10 @@ yarn-debug.log*
 yarn-error.log*
 
 # env files
+# submission
+/omega-submission
+/generated-diagrams
+
 .env
 
 # vercel
