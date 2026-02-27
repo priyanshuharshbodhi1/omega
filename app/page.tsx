@@ -106,7 +106,7 @@ export default async function Home() {
               </div>
 
               <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4 pointer-events-auto animate-[fade-in_1.2s_ease-out]">
-                <Link href="https://youtu.be/-BkMrIukKYo">
+                <Link href="https://www.youtube.com/watch?v=29ulpLYsDjM">
                   <Button
                     variant="outline"
                     size="lg"

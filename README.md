@@ -1,4 +1,5 @@
 # Omega
+[![Demo Video](https://img.shields.io/badge/Demo-Video-red?style=for-the-badge&logo=youtube)](https://www.youtube.com/watch?v=29ulpLYsDjM)
 
 Omega is a high-performance, open-source SaaS platform designed for business owners to effortlessly collect, analyze, and act on customer feedback using the power of AI. Built with **Next.js** and **Elasticsearch**, Omega consolidates feedback collection, AI-powered support, and deep analytics into a single, cohesive platform.
 
