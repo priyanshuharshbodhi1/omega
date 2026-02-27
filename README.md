@@ -50,6 +50,9 @@ Product teams query feedback data in natural language. Omega auto-selects the ri
 ### Technical Deep Dive
 ![Technical Architecture](generated-diagrams/omega_technical_deepdive.png.png)
 
+### Granular System Mapping
+![Granular Architecture](generated-diagrams/arc-diagram.png)
+
 ### Elasticsearch as the Complete Data Layer
 All data lives across **8 indices**: `feedback`, `support_docs`, `support_conversations`, `support_tickets`, `issue_clusters`, `action_audit_log`, `teams`, `users`. **No secondary database.**
 
