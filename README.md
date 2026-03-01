@@ -19,7 +19,7 @@ Businesses lose over **$75 billion a year** to poor customer service. Feedback s
 Omega is a dual-mode SaaS platform — **Feedback Analytics + AI Customer Support** — running entirely on Elasticsearch. Businesses embed a widget with 2 lines of code. The same widget handles feedback collection or AI support, configurable per team.
 
 ### Arya: AI Customer Support Agent
-Customers chat with Arya through the embeddable widget. Under the hood:
+Customers chat with Arya through the embeddable widget. **The chatbot autodetects the user's language and responds in that language.** Under the hood:
 - **Hybrid search** on `support_docs` using BM25 (lexical) + KNN (vector) with Reciprocal Rank Fusion (**RRF**, k=60).
 - The `omega_customer_support` agent in **Elastic Agent Builder** generates grounded responses with inline [1], [2] citations mapped to actual source documents.
 - **Auto-detects 6 languages** (English, Spanish, French, German, Hindi, Arabic) — queries are translated to English for search, responses translated back with citations preserved.
